@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
-import type { CurrentUser } from "../../hooks/useCurrentUser";
+import type { CurrentUser } from "../../types/api";
 
 type SidebarProps = {
   user: CurrentUser | null;

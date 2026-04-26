@@ -1,9 +1,9 @@
-from app.schemas.scan import ModelInputPayload
+"""
+DEPRECATED — this module is no longer used.
 
+The preprocessing pipeline now feeds directly into:
+    app/vectorization/vectorizer.vectorize_tokens()
+    app/model/inference.run_inference()
 
-def build_model_input(language: str, normalized_tokens: list[str]) -> ModelInputPayload:
-    return ModelInputPayload(
-        language=language,
-        sequence=normalized_tokens,
-        length=len(normalized_tokens),
-    )
+Kept as a stub so the package structure is not broken.
+"""

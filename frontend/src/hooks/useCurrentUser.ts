@@ -1,15 +1,9 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
+import type { CurrentUser } from "../types/api";
 
-export type CurrentUser = {
-  id: string;
-  email: string;
-  fullName?: string | null;
-  role: string;
-  createdAt: string;
-  updatedAt: string;
-  isActive: boolean;
-};
+// Re-export so existing imports from this module keep working
+export type { CurrentUser };
 
 export function useCurrentUser() {
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -17,7 +11,7 @@ export function useCurrentUser() {
 
   const fetchUser = async () => {
     try {
-      const res = await api.get("/api/user/me");
+      const res = await api.get<CurrentUser>("/api/user/me");
       setUser(res.data);
     } catch {
       setUser(null);

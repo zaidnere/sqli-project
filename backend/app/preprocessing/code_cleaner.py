@@ -1,24 +1,27 @@
 import re
 
 
+def remove_block_comments(code: str) -> str:
+    return re.sub(r"/\*.*?\*/", "", code, flags=re.DOTALL)
+
+
 def clean_code(raw_code: str) -> str:
-    code = raw_code
+    code = remove_block_comments(raw_code)
 
-    # remove multiline comments: /* ... */
-    code = re.sub(r"/\*.*?\*/", "", code, flags=re.DOTALL)
+    cleaned_lines = []
 
-    # remove python triple quotes
-    code = re.sub(r"'''[\s\S]*?'''", "", code)
-    code = re.sub(r'"""[\s\S]*?"""', "", code)
+    for line in code.splitlines():
+        stripped = line.strip()
 
-    # remove single-line comments
-    code = re.sub(r"#.*", "", code)
-    code = re.sub(r"//.*", "", code)
+        if not stripped:
+            continue
 
-    # strip trailing spaces per line
-    lines = [line.rstrip() for line in code.splitlines()]
+        if stripped.startswith("#"):
+            continue
 
-    # remove empty lines
-    lines = [line for line in lines if line.strip()]
+        if stripped.startswith("//"):
+            continue
 
-    return "\n".join(lines).strip()
+        cleaned_lines.append(line.rstrip())
+
+    return "\n".join(cleaned_lines)

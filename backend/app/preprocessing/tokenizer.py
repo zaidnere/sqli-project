@@ -1,17 +1,47 @@
 import re
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Tokenizer regex — order matters, longer patterns first
+# ──────────────────────────────────────────────────────────────────────────────
+TOKEN_REGEX = re.compile(
+    r'''
+    # ── F-strings (must come BEFORE plain strings) ───────────────────────────
+    # Triple-quoted f-strings
+    f\"\"\"[\s\S]*?\"\"\"                   |
+    f\'\'\'[\s\S]*?\'\'\'                   |
+    # Single-quoted f-strings
+    f\"(?:\\.|[^\"\\])*\"                   |
+    f\'(?:\\.|[^\'\\])*\'                   |
 
-TOKEN_PATTERN = r"""
-    [A-Za-z_][A-Za-z0-9_]*     |  # identifiers / keywords
-    \d+\.\d+                   |  # float
-    \d+                        |  # int
-    "(?:\\.|[^"])*"            |  # double quoted string
-    '(?:\\.|[^'])*'            |  # single quoted string
-    ==|!=|<=|>=|\+\+|--|\|\||&&|->|=> |
-    [{}()\[\];,.:=+\-*/%<>!]
-"""
+    # ── Triple-quoted plain strings ───────────────────────────────────────────
+    \"\"\"[\s\S]*?\"\"\"                    |
+    \'\'\'[\s\S]*?\'\'\'                    |
+
+    # ── Plain strings ─────────────────────────────────────────────────────────
+    \"(?:\\.|[^\"\\])*\"                    |
+    \'(?:\\.|[^\'\\])*\'                    |
+
+    # ── Numbers ───────────────────────────────────────────────────────────────
+    \b\d+(?:\.\d+)?\b                       |
+
+    # ── Identifiers / keywords ────────────────────────────────────────────────
+    [A-Za-z_][A-Za-z0-9_]*                 |
+
+    # ── Multi-char operators ──────────────────────────────────────────────────
+    ==|!=|<=|>=|->|=>|\+\+|--              |
+
+    # ── Single-char operators and punctuation ─────────────────────────────────
+    [=+\-*/%<>!.,:;(){}\[\]]
+    ''',
+    re.VERBOSE,
+)
 
 
-def tokenize_code(code: str) -> list[str]:
-    tokens = re.findall(TOKEN_PATTERN, code, flags=re.VERBOSE)
-    return tokens
+def tokenize_code(cleaned_code: str) -> list[str]:
+    """
+    Tokenize source code into a list of string tokens.
+
+    F-strings (f"..." / f'...') are returned as a single token including
+    the f prefix so the normalizer can detect them as interpolated strings.
+    """
+    return TOKEN_REGEX.findall(cleaned_code)
