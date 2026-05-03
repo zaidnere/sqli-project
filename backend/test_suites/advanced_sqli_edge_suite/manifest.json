@@ -1,0 +1,110 @@
+[
+  {
+    "file": "01_NONE_safe_helper_whitelist_order_by.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "notes": "Whitelist validation happens inside helper, then f-string ORDER BY uses validated identifiers."
+  },
+  {
+    "file": "02_IN_BAND_vuln_whitelist_bypass_assignment.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "notes": "Whitelist exists, but raw value is used instead of safe variable."
+  },
+  {
+    "file": "03_IN_BAND_vuln_alias_query_builder.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "notes": "Unsafe f-string value injection hidden behind aliases and helper functions."
+  },
+  {
+    "file": "04_IN_BAND_vuln_list_join_ids.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "notes": "IN clause built by joining raw user-provided IDs."
+  },
+  {
+    "file": "05_NONE_safe_list_ids_parameterized.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "notes": "Same IN query idea, but uses placeholders for every value."
+  },
+  {
+    "file": "06_BLIND_vuln_helper_boolean_sink.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "notes": "Unsafe SQL result is converted to bool through a helper."
+  },
+  {
+    "file": "07_BLIND_vuln_count_passed_to_decision.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "notes": "Unsafe SQL controls boolean decision through temp variables and helper."
+  },
+  {
+    "file": "08_NONE_safe_boolean_parameterized.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "notes": "Boolean decision, but the SQL is parameterized."
+  },
+  {
+    "file": "09_SECOND_ORDER_vuln_db_value_through_function.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "notes": "DB-loaded value passes through helper before unsafe SQL reuse."
+  },
+  {
+    "file": "10_SECOND_ORDER_vuln_fetchall_map_join.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "notes": "Values from fetchall are transformed, joined, then used unsafely."
+  },
+  {
+    "file": "11_SECOND_ORDER_vuln_db_fragment_hidden_in_object.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "notes": "Stored SQL fragment loaded from DB into object field and reused."
+  },
+  {
+    "file": "12_NONE_safe_db_loaded_parameterized_through_helper.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "notes": "DB-loaded value passes through helper but is inserted using parameters."
+  },
+  {
+    "file": "13_NONE_safe_static_executescript_schema.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "notes": "Static executescript with DDL only."
+  },
+  {
+    "file": "14_IN_BAND_vuln_executescript_value.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "notes": "executescript with direct f-string value injection."
+  },
+  {
+    "file": "15_NONE_safe_limit_offset_int_cast.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "notes": "Dynamic LIMIT/OFFSET after numeric conversion and bounds."
+  },
+  {
+    "file": "16_IN_BAND_vuln_limit_offset_raw.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "notes": "Raw LIMIT/OFFSET strings are inserted without numeric conversion."
+  },
+  {
+    "file": "17_NONE_safe_enum_style_filter.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "notes": "Enum-style whitelist for status, all values still parameterized."
+  },
+  {
+    "file": "18_IN_BAND_vuln_looks_sanitized_replace.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "notes": "String replacement is not a strict whitelist and should not make SQL safe."
+  }
+]

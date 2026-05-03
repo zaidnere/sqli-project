@@ -3,7 +3,7 @@ Code chunker — splits source files into function/method-level blocks.
 
 This solves the long-file problem: a large file with many safe helper
 functions and one hidden vulnerable function will have the vulnerable
-function's signals buried far past the 256-token model window.
+function's signals buried far past the 128-token model window.
 
 By analysing each function independently and taking the worst-case score
 (max-pool), we ensure a single vulnerable function anywhere in the file

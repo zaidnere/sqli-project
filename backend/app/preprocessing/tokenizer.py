@@ -13,6 +13,12 @@ TOKEN_REGEX = re.compile(
     f\"(?:\\.|[^\"\\])*\"                   |
     f\'(?:\\.|[^\'\\])*\'                   |
 
+    # ── JavaScript template literals (backtick strings) ─────────────────────
+    # Capture entire template literal as single token. The normalizer treats
+    # this analogously to a Python f-string: if it contains ${...} AND SQL
+    # keywords, it gets tagged FSTRING_SQL.
+    \`(?:\\.|[^\`\\])*\`                    |
+
     # ── Triple-quoted plain strings ───────────────────────────────────────────
     \"\"\"[\s\S]*?\"\"\"                    |
     \'\'\'[\s\S]*?\'\'\'                    |
@@ -28,10 +34,10 @@ TOKEN_REGEX = re.compile(
     [A-Za-z_][A-Za-z0-9_]*                 |
 
     # ── Multi-char operators ──────────────────────────────────────────────────
-    ==|!=|<=|>=|->|=>|\+\+|--              |
+    ==|!=|<=|>=|->|=>|\+\+|--|\?\?         |
 
     # ── Single-char operators and punctuation ─────────────────────────────────
-    [=+\-*/%<>!.,:;(){}\[\]]
+    [=+\-*/%<>!.,:;?(){}\[\]]
     ''',
     re.VERBOSE,
 )

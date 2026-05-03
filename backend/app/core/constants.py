@@ -35,6 +35,34 @@ SQL_FRAGMENT_KEYWORDS = {
     "join",
 }
 
+# Used by _contains_sql for fragment detection. Each entry is a list of
+# tokens that must ALL be present in the candidate string for it to count
+# as a SQL fragment. Two-feature requirement avoids false positives like
+# the string "Please log in and try again" (which contains "and" but
+# nothing else SQL-like).
+SQL_FRAGMENT_COMBOS = [
+    [" and ", "="],
+    [" and ", " like "],
+    [" and ", " in ("],
+    [" and ", " is null"],
+    [" and ", " is not null"],
+    [" or ",  "="],
+    [" or ",  " like "],
+    [" or ",  " in ("],
+    [" or ",  " is null"],
+    [" like ", "%"],
+    [" like ", "?"],
+    [" between ", " and "],
+    [" exists ", "select"],
+    [" in (", "select"],
+    ["lower(", "="],
+    ["lower(", " like "],
+    ["upper(", "="],
+    ["upper(", " like "],
+    ["coalesce(", "="],
+    ["coalesce(", " like "],
+]
+
 
 MAX_VAR_TOKENS = 48
 MAX_FUNC_TOKENS = 32

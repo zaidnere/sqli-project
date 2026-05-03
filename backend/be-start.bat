@@ -5,12 +5,17 @@ REM Run from the backend\ directory
 echo SQLi Scanner -- Backend
 echo =======================
 
-REM Check for virtual environment
-if exist venv\Scripts\python.exe (
-    set PYTHON=venv\Scripts\python.exe
+REM Check for virtual environment and activate it
+if exist venv\Scripts\activate.bat (
+    echo Activating virtual environment...
+    call venv\Scripts\activate.bat
+    set PYTHON=python
 ) else (
+    echo Virtual environment not found. Using system Python...
     set PYTHON=python
 )
+
+echo.
 
 REM Validate model weights (informational)
 echo Checking model weights...

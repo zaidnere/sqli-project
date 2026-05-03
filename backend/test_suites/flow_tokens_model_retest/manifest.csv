@@ -1,0 +1,15 @@
+file,expected_verdict,expected_type,notes
+01_NONE_safe_whitelist_order_by.py,SAFE,NONE,Strict allowlist ORDER BY
+02_IN_BAND_vuln_raw_order_by.py,VULNERABLE,IN_BAND,Raw ORDER BY identifiers without allowlist
+03_IN_BAND_vuln_fstring_where.py,VULNERABLE,IN_BAND,f-string value injection in WHERE
+04_IN_BAND_vuln_partially_parameterized.py,VULNERABLE,IN_BAND,Mostly parameterized query with one concatenated clause
+05_BLIND_vuln_count_gt_zero.py,VULNERABLE,BLIND,COUNT(*) > 0 boolean sink
+06_BLIND_vuln_row_is_not_none.py,VULNERABLE,BLIND,fetchone result controls boolean login
+07_BLIND_vuln_temp_var_boolean.py,VULNERABLE,BLIND,boolean sink through temp variable
+08_SECOND_ORDER_vuln_db_bio_reuse.py,VULNERABLE,SECOND_ORDER,DB-loaded value reused unsafely
+09_SECOND_ORDER_vuln_cached_fragment.py,VULNERABLE,SECOND_ORDER,stored SQL fragment reused in later query
+10_NONE_safe_second_order_parameterized.py,SAFE,NONE,DB-loaded value reused safely through binding
+11_NONE_safe_static_ddl.py,SAFE,NONE,static DDL should not be SQLi
+12_NONE_safe_parameterized_boolean.py,SAFE,NONE,"boolean check, but fully parameterized"
+13_IN_BAND_vuln_fake_validation_order_by.py,VULNERABLE,IN_BAND,generic validation is not strict allowlist
+14_NONE_safe_dict_whitelist_table.py,SAFE,NONE,dictionary allowlist maps table names

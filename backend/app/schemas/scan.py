@@ -6,7 +6,7 @@ Two-model design (per project proposal):
   Model 2 — Fix:        generates corrected code (triggered by user action only)
 """
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -43,10 +43,16 @@ class SuspiciousPattern(BaseModel):
 
 class ScanDetectionInfo(BaseModel):
     """
-    Output of Model 1 (CNN + BiLSTM detection model).
+    Output of Model 1 (CNN + BiLSTM detection model, dual-head).
     Present on every scan.
     When modelLoaded=False, the score comes from rule-based signals only.
+
+    Two heads (Gap A — proposal page 8 + 31):
+      - Vulnerability head (binary):  riskScore, label, confidence
+      - Attack-type head   (4-way):   attackType, attackTypeConfidence,
+                                       attackTypeProbs, attackTypeAvailable
     """
+    # ── Vulnerability head (binary) ────────────────────────────────────────────
     riskScore: float                         # [0.0, 1.0]
     label: str                               # "SAFE" | "VULNERABLE" | "SUSPICIOUS"
     confidence: float                        # same as riskScore — for display clarity
@@ -54,6 +60,27 @@ class ScanDetectionInfo(BaseModel):
     explanation: str                         # why this verdict was reached
     suspiciousPatterns: List[SuspiciousPattern]  # detected danger signals
     modelLoaded: bool                        # False = rule-based signals only
+
+    # ── Gap B — Verdict source (which fusion branch fired) ─────────────────────
+    # Exposes the rule-vs-ML decision so the user can see *why* a chunk was
+    # flagged. See backend/docs/ARCHITECTURE.md for the full policy.
+    #   "ml"               → ML score won, rule was neutral or agreed
+    #   "ml_overrides_rule"→ ML strongly disagreed with rule and won
+    #                        (whitelist-validated f-string pattern)
+    #   "ml+rule"          → ML and rule both flagged (within 0.10 of each other)
+    #   "rule"             → Rule beat ML (e.g. SQL_CONCAT in builder helper
+    #                        the model hadn't seen)
+    #   "rule_safety_net"  → ML model unavailable; rule layer is the verdict
+    verdictSource: str = "ml"
+
+    # ── Attack-type head (Gap A — softmax over 4 classes) ──────────────────────
+    # Always present. When attackTypeAvailable is False, attackType is "NONE"
+    # and attackTypeProbs is {NONE: 1.0, ...}, meaning the loaded weights
+    # predate Gap A (older single-head .npz). Re-train to get a real prediction.
+    attackType: str = "NONE"                 # "NONE" | "IN_BAND" | "BLIND" | "SECOND_ORDER"
+    attackTypeConfidence: float = 0.0        # softmax probability of the predicted class
+    attackTypeProbs: Dict[str, float] = {}   # full per-class distribution
+    attackTypeAvailable: bool = False        # False if running on pre-Gap-A weights
 
 
 # ── Model 2 output — Fix (triggered by user action only) ─────────────────────

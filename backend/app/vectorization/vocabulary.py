@@ -21,6 +21,14 @@ UNSAFE_EXEC_TOKEN = "UNSAFE_EXEC"  # execute(var)         — no params tuple
 SAFE_EXEC_TOKEN   = "SAFE_EXEC"    # execute(var, params) — parameterized
 SQL_CONCAT_TOKEN  = "SQL_CONCAT"   # SQL_STRING + VAR or FSTRING_SQL + VAR
 
+# Data-flow signal tokens (Gap-A v2: distinguish attack types semantically)
+WHITELIST_VAR_TOKEN     = "WHITELIST_VAR"      # var = X if X in ALLOWED_X else default
+DB_LOADED_VAR_TOKEN     = "DB_LOADED_VAR"      # var = cursor.fetchone()/.fetchall()/...
+BOOLEAN_SINK_TOKEN      = "BOOLEAN_SINK"       # function returns boolean of fetch result
+FSTRING_SQL_RAW_TOKEN   = "FSTRING_SQL_RAW"    # f-string interpolates RAW (non-validated) var
+SAFE_PLACEHOLDER_LIST_TOKEN = "SAFE_PLACEHOLDER_LIST"  # placeholders="?,?,?" + execute(sql, vals)
+SAFE_NUMERIC_VAR_TOKEN  = "SAFE_NUMERIC_VAR"   # var derived from int(x)/min/max/arithmetic
+
 VAR_OTHER_TOKEN      = "VAR_OTHER"
 FUNC_OTHER_TOKEN     = "FUNC_OTHER"
 PROPERTY_OTHER_TOKEN = "PROPERTY_OTHER"
@@ -56,6 +64,10 @@ def build_fixed_vocabulary() -> dict[str, int]:
 
     # Semantic signal tokens
     tokens.extend([UNSAFE_EXEC_TOKEN, SAFE_EXEC_TOKEN, SQL_CONCAT_TOKEN])
+
+    # Data-flow signal tokens (Gap-A v2)
+    tokens.extend([WHITELIST_VAR_TOKEN, DB_LOADED_VAR_TOKEN, BOOLEAN_SINK_TOKEN])
+    tokens.extend([FSTRING_SQL_RAW_TOKEN, SAFE_PLACEHOLDER_LIST_TOKEN, SAFE_NUMERIC_VAR_TOKEN])
 
     # Keywords
     tokens.extend(sorted(LANGUAGE_KEYWORDS))

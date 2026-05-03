@@ -94,7 +94,8 @@ def run_fix_inference(token_ids: list[int], emb_W: np.ndarray) -> Optional[dict]
     if w is None:
         return None
 
-    ids = np.array(token_ids[:256], dtype=np.int32)
+    from app.model.sqli_detector import MODEL_SEQ_LEN
+    ids = np.array(token_ids[:MODEL_SEQ_LEN], dtype=np.int32)
     emb = emb_W[ids]                                    # (seq_len, EMBED_DIM)
     pooled = emb.mean(axis=0)                           # (EMBED_DIM,)
     h = _relu(w["m2_dense1_W"] @ pooled + w["m2_dense1_b"])  # (M2_HIDDEN,)

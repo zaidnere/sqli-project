@@ -27,6 +27,15 @@ export interface SuspiciousPattern {
   severity: "HIGH" | "MEDIUM";
 }
 
+export type AttackType = "NONE" | "IN_BAND" | "BLIND" | "SECOND_ORDER";
+
+export type VerdictSource =
+  | "ml"
+  | "ml_overrides_rule"
+  | "ml+rule"
+  | "rule"
+  | "rule_safety_net";
+
 export interface ScanDetectionInfo {
   riskScore: number;                       // [0.0, 1.0]
   label: "SAFE" | "VULNERABLE" | "SUSPICIOUS";
@@ -35,6 +44,15 @@ export interface ScanDetectionInfo {
   explanation: string;
   suspiciousPatterns: SuspiciousPattern[];
   modelLoaded: boolean;
+
+  // Gap B — which layer drove the verdict
+  verdictSource: VerdictSource;
+
+  // Gap A — attack-type classification head
+  attackType: AttackType;
+  attackTypeConfidence: number;            // [0.0, 1.0]
+  attackTypeProbs: Record<AttackType, number>;
+  attackTypeAvailable: boolean;            // false on pre-Gap-A weights
 }
 
 // ── Main scan response (Model 1 output only) ──────────────────────────────────

@@ -10,7 +10,10 @@ type ScanResultProps = { data: ScanResponse };
 // ─────────────────────────────────────────────────────────────────────────────
 
 function VerdictBanner({ detection }: { detection: ScanResponse["detection"] }) {
-  const { label, riskScore, confidence, vulnerabilityType, explanation, modelLoaded } = detection;
+  const {
+    label, riskScore, confidence, vulnerabilityType, explanation, modelLoaded,
+    attackType, attackTypeConfidence, attackTypeAvailable, verdictSource,
+  } = detection;
 
   const isVuln   = label === "VULNERABLE";
   const isSusp   = label === "SUSPICIOUS";
@@ -23,6 +26,26 @@ function VerdictBanner({ detection }: { detection: ScanResponse["detection"] }) 
 
   const pct = Math.round(riskScore * 100);
   const r = 40, circ = 2 * Math.PI * r;
+
+  // Gap A — attack-type label (only meaningful when type head trained)
+  const ATTACK_TYPE_LABELS: Record<string, string> = {
+    NONE:         "No attack",
+    IN_BAND:      "In-band injection",
+    BLIND:        "Blind injection",
+    SECOND_ORDER: "Second-order injection",
+  };
+  const attackLabel = ATTACK_TYPE_LABELS[attackType] ?? attackType;
+  const showAttackType = attackTypeAvailable && (isVuln || isSusp);
+
+  // Gap B — verdict source label
+  const VERDICT_SOURCE_LABELS: Record<string, string> = {
+    "ml":                "ML model",
+    "ml_overrides_rule": "ML (overrode rule layer)",
+    "ml+rule":           "ML + rule layer (both agree)",
+    "rule":              "Rule layer (ML uncertain)",
+    "rule_safety_net":   "Rule layer (safety net — ML offline)",
+  };
+  const sourceLabel = VERDICT_SOURCE_LABELS[verdictSource] ?? verdictSource;
 
   return (
     <div
@@ -76,6 +99,36 @@ function VerdictBanner({ detection }: { detection: ScanResponse["detection"] }) 
         </div>
       </div>
 
+      {/* Gap A — attack type chip + Gap B — verdict source */}
+      {(showAttackType || verdictSource) && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {showAttackType && (
+            <span
+              className="rounded-md border px-3 py-1.5 font-mono text-[11px] font-bold"
+              style={{
+                borderColor: `${color}55`,
+                background:  `${color}15`,
+                color,
+              }}
+              title="Attack type predicted by Model 1's softmax head"
+            >
+              ⚡ {attackLabel}
+              {attackTypeConfidence > 0 && (
+                <span className="ml-2 opacity-70">
+                  · {Math.round(attackTypeConfidence * 100)}% confidence
+                </span>
+              )}
+            </span>
+          )}
+          <span
+            className="rounded-md border border-[#7bd0ff]/30 bg-[#7bd0ff]/5 px-3 py-1.5 font-mono text-[10px] text-[#7bd0ff]"
+            title="Which layer drove this verdict — see ARCHITECTURE.md"
+          >
+            🔍 Verdict source: {sourceLabel}
+          </span>
+        </div>
+      )}
+
       {/* Explanation */}
       <div className="mt-5 rounded-xl border border-white/10 bg-black/20 px-5 py-4">
         <p className="font-mono text-[10px] uppercase tracking-widest mb-2 opacity-60" style={{ color }}>
@@ -88,6 +141,11 @@ function VerdictBanner({ detection }: { detection: ScanResponse["detection"] }) 
       {!modelLoaded && (
         <p className="mt-3 font-mono text-[10px] text-[#fbbf24] opacity-70">
           ⚠ ML model not loaded — verdict is rule-based. Train in Colab for ML scores.
+        </p>
+      )}
+      {modelLoaded && !attackTypeAvailable && (isVuln || isSusp) && (
+        <p className="mt-3 font-mono text-[10px] text-[#fbbf24] opacity-70">
+          ⚠ Attack-type classifier not available — re-train Model 1 with the dual-head notebook.
         </p>
       )}
     </div>

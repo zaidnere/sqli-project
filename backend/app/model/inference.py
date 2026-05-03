@@ -13,7 +13,13 @@ Integration:
 
     result = run_inference(token_ids)
     # result is None  →  model not yet deployed
-    # result is dict  →  { riskScore, label, vulnerabilityType, recommendation, modelLoaded }
+    # result is dict with keys:
+    #     riskScore, label, vulnerabilityType, recommendation, modelLoaded
+    #     attackType, attackTypeId, attackTypeConfidence, attackTypeProbs,
+    #     attackTypeAvailable
+    #
+    # The attack-type fields come from the Gap-A softmax head. If the loaded
+    # weights predate Gap A, attackTypeAvailable=False and attackType="NONE".
 """
 
 import os
@@ -70,7 +76,10 @@ def run_inference(token_ids: List[int]) -> Optional[dict]:
     Run the detection model on a list of token IDs.
 
     Returns:
-        dict with keys { riskScore, label, vulnerabilityType, recommendation, modelLoaded }
+        dict with keys:
+            riskScore, label, vulnerabilityType, recommendation, modelLoaded,
+            attackType, attackTypeId, attackTypeConfidence, attackTypeProbs,
+            attackTypeAvailable
         — or —
         None if the model has not been trained / deployed yet.
     """

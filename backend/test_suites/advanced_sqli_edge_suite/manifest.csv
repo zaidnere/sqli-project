@@ -1,0 +1,19 @@
+file,expected_verdict,expected_type,notes
+01_NONE_safe_helper_whitelist_order_by.py,SAFE,NONE,"Whitelist validation happens inside helper, then f-string ORDER BY uses validated identifiers."
+02_IN_BAND_vuln_whitelist_bypass_assignment.py,VULNERABLE,IN_BAND,"Whitelist exists, but raw value is used instead of safe variable."
+03_IN_BAND_vuln_alias_query_builder.py,VULNERABLE,IN_BAND,Unsafe f-string value injection hidden behind aliases and helper functions.
+04_IN_BAND_vuln_list_join_ids.py,VULNERABLE,IN_BAND,IN clause built by joining raw user-provided IDs.
+05_NONE_safe_list_ids_parameterized.py,SAFE,NONE,"Same IN query idea, but uses placeholders for every value."
+06_BLIND_vuln_helper_boolean_sink.py,VULNERABLE,BLIND,Unsafe SQL result is converted to bool through a helper.
+07_BLIND_vuln_count_passed_to_decision.py,VULNERABLE,BLIND,Unsafe SQL controls boolean decision through temp variables and helper.
+08_NONE_safe_boolean_parameterized.py,SAFE,NONE,"Boolean decision, but the SQL is parameterized."
+09_SECOND_ORDER_vuln_db_value_through_function.py,VULNERABLE,SECOND_ORDER,DB-loaded value passes through helper before unsafe SQL reuse.
+10_SECOND_ORDER_vuln_fetchall_map_join.py,VULNERABLE,SECOND_ORDER,"Values from fetchall are transformed, joined, then used unsafely."
+11_SECOND_ORDER_vuln_db_fragment_hidden_in_object.py,VULNERABLE,SECOND_ORDER,Stored SQL fragment loaded from DB into object field and reused.
+12_NONE_safe_db_loaded_parameterized_through_helper.py,SAFE,NONE,DB-loaded value passes through helper but is inserted using parameters.
+13_NONE_safe_static_executescript_schema.py,SAFE,NONE,Static executescript with DDL only.
+14_IN_BAND_vuln_executescript_value.py,VULNERABLE,IN_BAND,executescript with direct f-string value injection.
+15_NONE_safe_limit_offset_int_cast.py,SAFE,NONE,Dynamic LIMIT/OFFSET after numeric conversion and bounds.
+16_IN_BAND_vuln_limit_offset_raw.py,VULNERABLE,IN_BAND,Raw LIMIT/OFFSET strings are inserted without numeric conversion.
+17_NONE_safe_enum_style_filter.py,SAFE,NONE,"Enum-style whitelist for status, all values still parameterized."
+18_IN_BAND_vuln_looks_sanitized_replace.py,VULNERABLE,IN_BAND,String replacement is not a strict whitelist and should not make SQL safe.

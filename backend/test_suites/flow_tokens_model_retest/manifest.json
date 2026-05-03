@@ -1,0 +1,86 @@
+[
+  {
+    "file": "01_NONE_safe_whitelist_order_by.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "notes": "Strict allowlist ORDER BY"
+  },
+  {
+    "file": "02_IN_BAND_vuln_raw_order_by.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "notes": "Raw ORDER BY identifiers without allowlist"
+  },
+  {
+    "file": "03_IN_BAND_vuln_fstring_where.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "notes": "f-string value injection in WHERE"
+  },
+  {
+    "file": "04_IN_BAND_vuln_partially_parameterized.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "notes": "Mostly parameterized query with one concatenated clause"
+  },
+  {
+    "file": "05_BLIND_vuln_count_gt_zero.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "notes": "COUNT(*) > 0 boolean sink"
+  },
+  {
+    "file": "06_BLIND_vuln_row_is_not_none.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "notes": "fetchone result controls boolean login"
+  },
+  {
+    "file": "07_BLIND_vuln_temp_var_boolean.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "notes": "boolean sink through temp variable"
+  },
+  {
+    "file": "08_SECOND_ORDER_vuln_db_bio_reuse.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "notes": "DB-loaded value reused unsafely"
+  },
+  {
+    "file": "09_SECOND_ORDER_vuln_cached_fragment.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "notes": "stored SQL fragment reused in later query"
+  },
+  {
+    "file": "10_NONE_safe_second_order_parameterized.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "notes": "DB-loaded value reused safely through binding"
+  },
+  {
+    "file": "11_NONE_safe_static_ddl.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "notes": "static DDL should not be SQLi"
+  },
+  {
+    "file": "12_NONE_safe_parameterized_boolean.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "notes": "boolean check, but fully parameterized"
+  },
+  {
+    "file": "13_IN_BAND_vuln_fake_validation_order_by.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "notes": "generic validation is not strict allowlist"
+  },
+  {
+    "file": "14_NONE_safe_dict_whitelist_table.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "notes": "dictionary allowlist maps table names"
+  }
+]
