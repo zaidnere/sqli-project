@@ -188,18 +188,27 @@ def get_or_create_placeholder(
 
 # ── Execute-call pattern detector ─────────────────────────────────────────────
 
-def _classify_execute_call(tokens: list[str], exec_idx: int) -> str | None:
+def _classify_execute_call(
+    tokens: list[str],
+    exec_idx: int,
+    static_sql_vars: set[str] | None = None,
+) -> str | None:
     """
     Look at cursor.execute(…) and decide:
       SAFE_EXEC    — parameterized (has a second argument)
                    — OR single arg is a literal SQL string (static SQL)
+                   — OR single arg is a variable known to hold a static SQL
+                     literal (from `var = "...static SQL..."` earlier)
       UNSAFE_EXEC  — single arg is a variable / expression carrying user data
       None         — cannot determine
 
-    Called when tokens[exec_idx] == 'execute' and tokens[exec_idx+1] == '('
+    static_sql_vars: optional set of variable names known to hold a plain
+    string literal assignment (not f-string, not concatenated).
     """
     if exec_idx + 1 >= len(tokens) or tokens[exec_idx + 1] != '(':
         return None
+
+    static_sql_vars = static_sql_vars or set()
 
     # Scan for matching closing paren, counting commas at depth 1, and
     # collecting argument tokens at depth 1.
@@ -221,10 +230,6 @@ def _classify_execute_call(tokens: list[str], exec_idx: int) -> str | None:
                 arg1_tokens.append(t)
         elif t == ',' and depth == 1:
             commas_at_depth1 += 1
-            # Only collect tokens BEFORE first comma (= first arg)
-            if commas_at_depth1 == 1:
-                # arg1_tokens already complete; keep scanning for closing paren
-                pass
         else:
             if depth >= 1 and commas_at_depth1 == 0:
                 arg1_tokens.append(t)
@@ -235,15 +240,17 @@ def _classify_execute_call(tokens: list[str], exec_idx: int) -> str | None:
         return 'SAFE_EXEC'
 
     # Single arg — check whether it's a literal-only string (static SQL).
-    # Tokens in arg1_tokens (excluding outer paren). If all tokens are
-    # string-literal-like (start with " ' or `) or string concatenation of
-    # literals only, it's static SAFE.
     non_string_meaningful = [
         t for t in arg1_tokens
         if t not in (',', '+', '.')
         and not (len(t) >= 2 and t[0] in '"\'`' and t[-1] in '"\'`')
     ]
     if not non_string_meaningful:
+        return 'SAFE_EXEC'
+
+    # Single non-string identifier — accept if all of them are known to
+    # be static-SQL-literal vars (i.e. assigned `var = "...static SQL..."`).
+    if all(t in static_sql_vars for t in non_string_meaningful):
         return 'SAFE_EXEC'
 
     return 'UNSAFE_EXEC'
@@ -1348,6 +1355,97 @@ def normalize_tokens(
     db_loaded_vars: set[str] = set()
     safe_placeholder_vars: set[str] = set()
     safe_numeric_vars: set[str] = set()
+    static_sql_vars: set[str] = set()      # var = "...static SQL string only..."
+
+    # Pre-pass: identify vars assigned a static SQL string literal. Used by
+    # _classify_execute_call to recognize `execute(<static_var>)` as SAFE_EXEC.
+    # A var qualifies when the RHS contains only string literals (and optional
+    # `+` / `.` concat of literals) and contains SQL keywords. F-strings,
+    # template literals, and any non-literal RHS disqualify the var.
+    for ti in range(len(tokens) - 1):
+        if tokens[ti] != "=":
+            continue
+        prev = tokens[ti - 1] if ti > 0 else None
+        nxt  = tokens[ti + 1] if ti + 1 < len(tokens) else None
+        if prev in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^"):
+            continue
+        if nxt == "=":
+            continue
+        # Walk back skipping type-decl keywords for LHS name
+        kk = ti - 1
+        while kk >= 0 and tokens[kk] in (
+            "const", "let", "var", "String", "Integer", "Long", "Double",
+            "Float", "Boolean", "Object", "int", "long", "double", "float",
+            "boolean", "char", "void", "byte", "short",
+            "static", "final", "private", "public", "protected",
+        ):
+            kk -= 1
+        if kk < 0 or not is_identifier(tokens[kk]):
+            continue
+        lhs = tokens[kk]
+        # Scan RHS — only string literals and concat operators.
+        rj = ti + 1
+        depth = 0
+        rhs_only_literals = True
+        rhs_has_sql = False
+        rhs_has_any = False
+        while rj < len(tokens):
+            tj = tokens[rj]
+            if tj in ("(", "[", "{"):
+                depth += 1
+            elif tj in (")", "]", "}"):
+                depth -= 1
+                if depth < 0: break
+            if depth == 0:
+                if tj in (";", "\n"):
+                    break
+                # Statement boundary check
+                if rj > ti + 1 and tj == "=":
+                    pv = tokens[rj - 1] if rj - 1 >= 0 else None
+                    nv = tokens[rj + 1] if rj + 1 < len(tokens) else None
+                    if pv not in ("=", "!", "<", ">", "+", "-", "*", "/", "%") and nv != "=":
+                        break
+                if tj in ("def", "class", "return", "if", "elif", "else",
+                          "for", "while", "try", "except", "finally"):
+                    if rj > ti + 1:
+                        break
+                # Look-ahead: identifier followed by `=` starts new statement.
+                # Or identifier followed by `.` or `(` starts a method call
+                # (next statement, since we already consumed any literal RHS).
+                if rj > ti + 1 and is_identifier(tj):
+                    nxt2 = tokens[rj + 1] if rj + 1 < len(tokens) else None
+                    if nxt2 in ("=", ".", "(") and nxt2 != "==":
+                        # If the LAST token we saw was a literal/operator,
+                        # this identifier belongs to the next statement.
+                        break
+            # Plain string literal — OK
+            if len(tj) >= 2 and tj[0] in '"\'`':
+                if (tj[0].lower() == 'f' if len(tj) >= 3 and tj[1] in '"\'' else False):
+                    rhs_only_literals = False
+                    break
+                if tj[0] == "`" and "${" in tj:
+                    rhs_only_literals = False
+                    break
+                rhs_has_any = True
+                if is_sql_string(tj):
+                    rhs_has_sql = True
+                inner = tj[1:-1].lower() if len(tj) >= 2 else ""
+                if any(kw in inner for kw in (
+                    "create table", "insert into", "select ", "update ",
+                    "delete from", "drop ", "alter ",
+                )):
+                    rhs_has_sql = True
+            elif tj in ("+", ".", ","):
+                pass
+            elif tj in ("(", ")", "[", "]"):
+                pass
+            else:
+                rhs_only_literals = False
+                break
+            rj += 1
+        if rhs_only_literals and rhs_has_sql and rhs_has_any:
+            static_sql_vars.add(lhs)
+
 
     # safe_returning_funcs maps helper-name → signal-kind
     safe_returning_funcs: dict[str, str] = {}
@@ -1715,7 +1813,7 @@ def normalize_tokens(
                                 break
 
             if should_classify:
-                signal = _classify_execute_call(tokens, i)
+                signal = _classify_execute_call(tokens, i, static_sql_vars=static_sql_vars)
                 if signal:
                     raw_norm.append(signal)
                 ph, func_counter = get_or_create_placeholder(
