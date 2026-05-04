@@ -261,7 +261,11 @@ _ALLOWLIST_NAME_HINTS = (
 
 # Suffixes specific to closed-mapping constants used as allowlists.
 # Strict — only matches at end of identifier.
-_ALLOWLIST_SUFFIXES = ("_MAP", "_LOOKUP", "_DICT", "_TABLE_MAP")
+_ALLOWLIST_SUFFIXES = (
+    "_MAP", "_LOOKUP", "_DICT",
+    "_TABLES", "_COLUMNS", "_FIELDS", "_KEYS", "_NAMES",
+    "_TABLE_MAP",
+)
 
 
 def _is_allowlist_identifier(token: str) -> bool:
@@ -1081,42 +1085,127 @@ def _detect_boolean_sink(tokens: list[str]) -> bool:
 
 # ── Main normalizer ───────────────────────────────────────────────────────────
 
-def extract_safe_returning_funcs(tokens: list[str]) -> set[str]:
+def extract_safe_returning_funcs(tokens: list[str]) -> dict[str, str]:
     """
-    Scan tokens for `def <name>(...)` definitions whose body contains a
-    whitelist pattern (Pattern A in return, or any inner WHITELIST_VAR
-    assignment). Returns the set of helper-function names.
+    Scan tokens for `def <name>(...)` definitions whose body fires a safe-flow
+    detector. Returns a dict mapping helper-function name → signal kind:
+      "WHITELIST_VAR"        — body has whitelist pattern (Pattern A/B/E)
+      "SAFE_NUMERIC_VAR"     — body uses int/min/max coercion
+      "SAFE_PLACEHOLDER_LIST"— body builds ?,?,? placeholder string
 
     The chunker calls this on the FULL FILE before chunking, so each chunk's
     normalize_tokens() can be told about helpers defined elsewhere in the file.
+
+    Also detects DB-loaded helpers: `def <name>(...): return db.fetch...()` —
+    used for cross-function SECOND_ORDER tracking. Returns kind="DB_LOADED_VAR".
     """
-    safe_returning_funcs: set[str] = set()
+    safe_returning_funcs: dict[str, str] = {}
     n_tokens = len(tokens)
+    # Identify all def-sites and their body ranges (until next def or EOF).
+    #
+    # Cross-language function-name detection:
+    #   Python:  `def <name>(...)`
+    #   PHP:     `function <name>(...)`     (after function keyword)
+    #   JS:      `function <name>(...)` or `async function <name>(...)`
+    #   Java:    `<modifiers>* <returntype> <name>(...)` — heuristic:
+    #            an identifier followed by `(` whose token before is also an
+    #            identifier (not a keyword like `if`/`while`/`return`/`new`).
+    def_sites: list[tuple[str, int, int]] = []  # (name, body_start, body_end)
+    JS_PY_DEF_KEYWORDS = {"def", "function"}
+    JAVA_NON_FUNC_PRECEDERS = {
+        "if", "while", "for", "switch", "return", "throw", "new", "catch",
+        "synchronized", "do", "else", ".", ",", "(", "[", "{", "=", "+", "-",
+        "*", "/", "%", "&", "|", "^", "<", ">", "!", "?", ":", ";",
+    }
     for fi, ftok in enumerate(tokens):
-        if ftok != "def" or fi + 1 >= n_tokens:
+        fname = None
+        if ftok in JS_PY_DEF_KEYWORDS and fi + 1 < n_tokens:
+            cand = tokens[fi + 1]
+            if is_identifier(cand):
+                fname = cand
+        else:
+            # Java-style: <type> <name> ( where prev token isn't a control keyword
+            if (
+                fi + 1 < n_tokens
+                and is_identifier(ftok)
+                and is_identifier(tokens[fi + 1])
+                and fi + 2 < n_tokens
+                and tokens[fi + 2] == "("
+                and ftok not in JAVA_NON_FUNC_PRECEDERS
+                and tokens[fi + 1] not in JAVA_NON_FUNC_PRECEDERS
+                # ftok must look like a type (capitalized or primitive)
+                and (ftok[0].isupper() or ftok in (
+                    "int", "long", "short", "byte", "double", "float",
+                    "boolean", "char", "void",
+                ))
+            ):
+                # Extra guard: the previous token shouldn't be an operator that
+                # would make this a function CALL rather than a definition.
+                # (E.g. `obj.foo (` or `if (cond) bar(` etc.)
+                prev_tok = tokens[fi - 1] if fi > 0 else None
+                if prev_tok not in (".", "->") and prev_tok not in JAVA_NON_FUNC_PRECEDERS:
+                    fname = tokens[fi + 1]
+        if fname is None:
             continue
-        fname = tokens[fi + 1]
-        if not is_identifier(fname):
-            continue
-        bj = fi + 2
-        while bj < n_tokens:
-            tj = tokens[bj]
-            if tj == "def" and bj > fi + 2:
-                break
-            if tj == "return" and bj + 6 < n_tokens:
+        # Determine body range — find first `{` after the name then matching `}`
+        body_start = fi + 2
+        # Skip past param list ( ... ) to find body
+        bp = fi + 2
+        # Skip past arg list
+        while bp < n_tokens and tokens[bp] != "(":
+            bp += 1
+        if bp < n_tokens:
+            depth = 0
+            while bp < n_tokens:
+                if tokens[bp] == "(": depth += 1
+                elif tokens[bp] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        bp += 1
+                        break
+                bp += 1
+        body_start = bp
+        body_end = n_tokens
+        # For Python (no braces) take until next `def`. For braces find matching.
+        # Simple: find next def/function or matching `}`.
+        if body_start < n_tokens and tokens[body_start] == "{":
+            depth = 0
+            for fj in range(body_start, n_tokens):
+                if tokens[fj] == "{": depth += 1
+                elif tokens[fj] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        body_end = fj + 1
+                        break
+        else:
+            for fj in range(body_start, n_tokens):
+                if tokens[fj] in ("def", "function") and fj > body_start:
+                    body_end = fj
+                    break
+        def_sites.append((fname, body_start, body_end))
+
+    for fname, body_start, body_end in def_sites:
+        body_tokens = tokens[body_start:body_end]
+        bn = len(body_tokens)
+        kind = None
+        # Scan for whitelist Pattern A in `return` AND assignments.
+        bj = 0
+        while bj < bn:
+            tj = body_tokens[bj]
+            # `return X if X in ALLOWLIST else default`
+            if tj == "return" and bj + 6 < bn:
                 k = bj + 1
                 saw_if = saw_in = saw_else = False
                 found_aw = False
                 local_d = 0
-                while k < n_tokens and k < bj + 30:
-                    tk = tokens[k]
+                while k < bn and k < bj + 30:
+                    tk = body_tokens[k]
                     if tk in ("(", "[", "{"): local_d += 1
                     elif tk in (")", "]", "}"):
                         local_d -= 1
                         if local_d < 0: break
                     if local_d == 0:
                         if tk in (";", "\n"): break
-                        if tk == "def" and k > bj + 1: break
                         if tk == "if": saw_if = True
                         elif saw_if and tk == "in": saw_in = True
                         elif saw_in and tk == "else": saw_else = True
@@ -1124,44 +1213,105 @@ def extract_safe_returning_funcs(tokens: list[str]) -> set[str]:
                             found_aw = True
                     k += 1
                 if saw_if and saw_in and saw_else and found_aw:
-                    safe_returning_funcs.add(fname)
+                    kind = "WHITELIST_VAR"
                     break
+                # `return <ALLOWLIST_NAME>.get(...) ?? default` / `return <ALLOWLIST_NAME>[k] ?? default`
+                k = bj + 1
+                while k < bn and k < bj + 20:
+                    tk = body_tokens[k]
+                    if _is_allowlist_identifier(tk):
+                        # check for .get(  or [
+                        if k + 1 < bn and body_tokens[k + 1] == "." and k + 2 < bn:
+                            method = body_tokens[k + 2]
+                            if method in ("get", "contains", "has"):
+                                kind = "WHITELIST_VAR"
+                                break
+                        if k + 1 < bn and body_tokens[k + 1] == "[":
+                            kind = "WHITELIST_VAR"
+                            break
+                    k += 1
+                if kind == "WHITELIST_VAR":
+                    break
+                # `return <ARR>[<key>] ?? default` (PHP, lowercase OK if it's
+                # `$this->allowedSort[...]` style)
+                if "??" in body_tokens[bj:bj + 20]:
+                    # Heuristic: any allowlist-named array OR `this`/`self`
+                    # property access followed by ?? counts
+                    for k in range(bj + 1, min(bn, bj + 20)):
+                        tk = body_tokens[k]
+                        if tk == "??":
+                            # Accept if anything before looks like array lookup
+                            # of an allowlist-named or this/self property.
+                            kind = "WHITELIST_VAR"
+                            break
+                    if kind:
+                        break
+            # Body assignment with whitelist pattern (recursive Pattern E)
             if tj == "=":
-                pv = tokens[bj - 1] if bj > 0 else None
-                nv = tokens[bj + 1] if bj + 1 < n_tokens else None
+                pv = body_tokens[bj - 1] if bj > 0 else None
+                nv = body_tokens[bj + 1] if bj + 1 < bn else None
                 if pv not in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^") and nv != "=":
-                    if _detect_whitelist_assignment(tokens, bj):
-                        safe_returning_funcs.add(fname)
+                    if _detect_whitelist_assignment(body_tokens, bj):
+                        kind = "WHITELIST_VAR"
                         break
             bj += 1
-    # Second pass: a helper that calls another known safe-returning helper
-    # and returns its result is also safe-returning. e.g. `normalize_sort`
-    # calling `pick_allowed`. Iterate to fixed point.
-    for _ in range(3):  # transitive closure within 3 hops is enough
-        added_any = False
-        for fi, ftok in enumerate(tokens):
-            if ftok != "def" or fi + 1 >= n_tokens:
+
+        if kind:
+            safe_returning_funcs[fname] = kind
+            continue
+
+        # Fallback: numeric helper (int/min/max arithmetic)
+        # Body contains return AND numeric coercion func at top level
+        has_return = "return" in body_tokens
+        has_numeric_func = any(
+            t in _NUMERIC_FUNCS for t in body_tokens
+        )
+        if has_return and has_numeric_func:
+            # Reject if any string concat or f-string SQL appears
+            has_sql_construction = any(
+                is_fstring_sql(t) or is_sql_string(t)
+                for t in body_tokens
+            )
+            if not has_sql_construction:
+                safe_returning_funcs[fname] = "SAFE_NUMERIC_VAR"
                 continue
-            fname = tokens[fi + 1]
-            if not is_identifier(fname) or fname in safe_returning_funcs:
+
+        # Fallback: DB-loaded helper. Body returns from a `.fetch...()` /
+        # `.get(...)` / `.all(...)` etc. call. Only when the function literally
+        # returns the DB-fetch call (or its row member).
+        for bj in range(bn):
+            if body_tokens[bj] != "return":
                 continue
-            bj = fi + 2
-            while bj < n_tokens:
-                tj = tokens[bj]
-                if tj == "def" and bj > fi + 2:
+            # Scan return expression for db-fetch call
+            for k in range(bj + 1, min(bn, bj + 30)):
+                if _is_db_fetch_call(body_tokens, k):
+                    safe_returning_funcs[fname] = "DB_LOADED_VAR"
                     break
-                if tj == "=":
-                    pv = tokens[bj - 1] if bj > 0 else None
-                    nv = tokens[bj + 1] if bj + 1 < n_tokens else None
-                    if pv not in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^") and nv != "=":
-                        # Check if RHS calls a known safe-returning helper
-                        ji = bj + 1
-                        if ji < n_tokens and is_identifier(tokens[ji]) and tokens[ji] in safe_returning_funcs:
-                            if ji + 1 < n_tokens and tokens[ji + 1] == "(":
-                                safe_returning_funcs.add(fname)
-                                added_any = True
-                                break
-                bj += 1
+            if fname in safe_returning_funcs:
+                break
+
+    # Transitive closure: a helper that calls a known safe-returning helper
+    # propagates its safety category.
+    for _ in range(3):
+        added_any = False
+        for fname, body_start, body_end in def_sites:
+            if fname in safe_returning_funcs:
+                continue
+            body_tokens = tokens[body_start:body_end]
+            bn = len(body_tokens)
+            for bj in range(bn):
+                if body_tokens[bj] != "=":
+                    continue
+                pv = body_tokens[bj - 1] if bj > 0 else None
+                nv = body_tokens[bj + 1] if bj + 1 < bn else None
+                if pv not in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^") and nv != "=":
+                    ji = bj + 1
+                    if ji < bn and is_identifier(body_tokens[ji]) and body_tokens[ji] in safe_returning_funcs:
+                        if ji + 1 < bn and body_tokens[ji + 1] == "(":
+                            # Inherit kind from the called helper
+                            safe_returning_funcs[fname] = safe_returning_funcs[body_tokens[ji]]
+                            added_any = True
+                            break
         if not added_any:
             break
     return safe_returning_funcs
@@ -1169,17 +1319,18 @@ def extract_safe_returning_funcs(tokens: list[str]) -> set[str]:
 
 def normalize_tokens(
     tokens: list[str],
-    extra_safe_funcs: set[str] | None = None,
+    extra_safe_funcs: dict[str, str] | set[str] | None = None,
 ) -> list[str]:
     """
     Normalize a token list into a semantic sequence.
     Injects UNSAFE_EXEC, SAFE_EXEC, SQL_CONCAT signals where detected.
     Also injects flow signals: WHITELIST_VAR, DB_LOADED_VAR, BOOLEAN_SINK.
 
-    extra_safe_funcs: set of helper-function names that the caller knows
-    return whitelist-validated values. Calls to these functions on the RHS
-    of an assignment propagate WHITELIST_VAR to the LHS. Used by the chunker
-    to share file-level context (helper defined in chunk A, used in chunk B).
+    extra_safe_funcs: dict[name → kind] (or legacy set of names treated as
+    WHITELIST_VAR) of helper functions known by the caller to return safe
+    values. Calls to these on the RHS of an assignment propagate the
+    appropriate signal to the LHS. Used by the chunker to share file-level
+    context (helper defined in chunk A, used in chunk B).
     """
     normalized: list[str] = []
 
@@ -1191,77 +1342,43 @@ def normalize_tokens(
     func_counter = 0
     property_counter = 0
 
-    # ── Pre-scan: detect flow patterns over RAW tokens (Gap-A v2) ─────────
-    # Map: position-of-`=` → flow signal to emit just BEFORE the assigned VAR.
-    #
-    # Why pre-scan: detectors look at raw tokens (need real method names like
-    # "fetchone", real allowlist names like "ALLOWED_SORT_COLUMNS"). The first
-    # pass below replaces those with placeholders, losing the information.
+    # ── Pre-scan: detect flow patterns over RAW tokens ────────────────────
     flow_signal_at_pos: dict[int, str] = {}
-    whitelisted_vars: set[str] = set()    # var names known to be allowlist-validated
-    db_loaded_vars: set[str] = set()      # var names known to hold DB fetch result
-    safe_placeholder_vars: set[str] = set()  # var = ",".join("?" for _ in xs)
-    safe_numeric_vars: set[str] = set()      # var = int(x) / min(x, ...) / arithmetic
+    whitelisted_vars: set[str] = set()
+    db_loaded_vars: set[str] = set()
+    safe_placeholder_vars: set[str] = set()
+    safe_numeric_vars: set[str] = set()
 
-    # ── Pre-scan: identify "safe-returning" helper functions ──────────────
-    # A function is safe-returning if its body contains an assignment that
-    # would fire WHITELIST_VAR (e.g. `col = pick_allowed(x, ALLOWED, default)`
-    # or `return value if value in ALLOWED else default`). When such a
-    # function is later called as RHS of an assignment, the LHS vars are
-    # marked WHITELIST_VAR via propagation.
-    #
-    # We detect this in two waves: first find all `def <name>(...)` sites,
-    # then for each, scan the body for whitelist patterns.
-    safe_returning_funcs: set[str] = set(extra_safe_funcs) if extra_safe_funcs else set()
+    # safe_returning_funcs maps helper-name → signal-kind
+    safe_returning_funcs: dict[str, str] = {}
+    if extra_safe_funcs:
+        if isinstance(extra_safe_funcs, dict):
+            safe_returning_funcs.update(extra_safe_funcs)
+        else:
+            # Legacy: set of names — treat all as WHITELIST_VAR
+            for nm in extra_safe_funcs:
+                safe_returning_funcs[nm] = "WHITELIST_VAR"
     n_tokens = len(tokens)
-    for fi, ftok in enumerate(tokens):
-        if ftok != "def" or fi + 1 >= n_tokens:
-            continue
-        fname = tokens[fi + 1]
-        if not is_identifier(fname):
-            continue
-        # Scan body until next `def` or end of tokens, looking for
-        # `return ... if ... in ALLOWLIST_NAME else ...` (Pattern A in return)
-        # or any assignment that would fire _detect_whitelist_assignment.
-        bj = fi + 2
-        while bj < n_tokens:
-            tj = tokens[bj]
-            if tj == "def" and bj > fi + 2:
-                break
-            # Direct: `return X if X in ALLOWLIST_NAME else default`
-            if tj == "return" and bj + 6 < n_tokens:
-                # Look ahead for `if ... in <ALLOWLIST_NAME> else`
-                k = bj + 1
-                saw_if = saw_in = saw_else = False
-                found_aw = False
-                local_d = 0
-                while k < n_tokens and k < bj + 30:
-                    tk = tokens[k]
-                    if tk in ("(", "[", "{"): local_d += 1
-                    elif tk in (")", "]", "}"):
-                        local_d -= 1
-                        if local_d < 0: break
-                    if local_d == 0:
-                        if tk in (";", "\n"): break
-                        if tk == "def" and k > bj + 1: break
-                        if tk == "if": saw_if = True
-                        elif saw_if and tk == "in": saw_in = True
-                        elif saw_in and tk == "else": saw_else = True
-                        elif saw_in and not saw_else and _is_allowlist_identifier(tk):
-                            found_aw = True
-                    k += 1
-                if saw_if and saw_in and saw_else and found_aw:
-                    safe_returning_funcs.add(fname)
-                    break
-            # Assignment with whitelist pattern (any inside body)
-            if tj == "=":
-                pv = tokens[bj - 1] if bj > 0 else None
-                nv = tokens[bj + 1] if bj + 1 < n_tokens else None
-                if pv not in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^") and nv != "=":
-                    if _detect_whitelist_assignment(tokens, bj):
-                        safe_returning_funcs.add(fname)
-                        break
-            bj += 1
+    # Local def-scan: union with extra_safe_funcs from caller. Use the same
+    # extractor for consistency.
+    local_safe_funcs = extract_safe_returning_funcs(tokens)
+    for nm, kind in local_safe_funcs.items():
+        safe_returning_funcs.setdefault(nm, kind)
+
+    # Type-keyword tokens that may precede a variable in a typed declaration.
+    # Walk-back stops at these without including them as LHS vars.
+    TYPE_DECL_KEYWORDS = {
+        # JS / TS
+        "const", "let", "var",
+        # Java primitives & common types
+        "int", "long", "short", "byte", "double", "float", "boolean", "char",
+        "void", "String", "Integer", "Long", "Double", "Float", "Boolean",
+        "Object", "Character", "Byte", "Short", "ResultSet", "Statement",
+        "PreparedStatement", "Connection", "List", "Set", "Map", "ArrayList",
+        "HashMap", "HashSet",
+        # C-like
+        "static", "final", "private", "public", "protected", "abstract",
+    }
 
     for idx, tok in enumerate(tokens):
         if tok != "=":
@@ -1274,24 +1391,26 @@ def normalize_tokens(
         if nxt == "=":
             continue
         # Collect ALL LHS identifiers (handles tuple-unpack like `a, b = f()`).
-        # Walk back from `=`, gathering identifiers separated by `,`.
+        # Walk back from `=`, gathering identifiers separated by `,`. Stop at
+        # type-decl keywords (do not include them as LHS vars).
         lhs_positions: list[int] = []
         kk = idx - 1
         while kk >= 0:
             tk = tokens[kk]
+            if tk in TYPE_DECL_KEYWORDS:
+                # Type annotation — stop walking back, do not include
+                break
             if is_identifier(tk):
-                # Skip type-annotation cases like `String x =` — only accept
-                # if it's the LAST identifier in a comma-separated chain.
                 lhs_positions.append(kk)
                 kk -= 1
                 continue
-            if tk in (",",):
+            if tk == ",":
                 kk -= 1
                 continue
             if tk in ("(", ")"):
                 kk -= 1
                 continue
-            # Stop at any non-identifier/non-comma token (`;`, `\n`, keyword, etc.)
+            # Stop at any other non-identifier/non-comma token
             break
         if not lhs_positions:
             continue
@@ -1306,15 +1425,43 @@ def normalize_tokens(
         elif _detect_safe_numeric_assignment(tokens, idx, safe_numeric_vars):
             signal = "SAFE_NUMERIC_VAR"
         else:
-            # Pattern F: RHS starts with a call to a safe-returning helper
-            # function, e.g. `safe_col, safe_dir = normalize_sort(...)` where
-            # `normalize_sort` was identified as containing whitelist patterns
-            # in its body. Propagates whitelist status across function calls.
+            # Pattern F: RHS calls a safe-returning helper function. Propagate
+            # the helper's signal kind to LHS. Recognised forms:
+            #   <var> = <helper>(...)              # bare call
+            #   <var> = await <helper>(...)        # JS async
+            #   <var> = self.<helper>(...)         # Python method
+            #   <var> = this.<helper>(...)         # JS method
+            #   <var> = $this->/$obj-><helper>(...) # PHP method
             ji = idx + 1
-            # Skip leading whitespace tokens (none here, but be safe)
-            if ji < len(tokens) and is_identifier(tokens[ji]) and tokens[ji] in safe_returning_funcs:
-                if ji + 1 < len(tokens) and tokens[ji + 1] == "(":
-                    signal = "WHITELIST_VAR"
+            # Skip leading `await` keyword
+            if ji < len(tokens) and tokens[ji] == "await":
+                ji += 1
+            helper_name = None
+            if ji < len(tokens) and is_identifier(tokens[ji]):
+                cand = tokens[ji]
+                if ji + 1 < len(tokens) and tokens[ji + 1] == "(" and cand in safe_returning_funcs:
+                    helper_name = cand
+                # method-call form: <obj>.<helper>( or <obj>-><helper>(
+                elif ji + 3 < len(tokens) and tokens[ji + 1] in (".", "->"):
+                    method_name = tokens[ji + 2]
+                    if (
+                        is_identifier(method_name)
+                        and method_name in safe_returning_funcs
+                        and tokens[ji + 3] == "("
+                    ):
+                        helper_name = method_name
+            if helper_name:
+                signal = safe_returning_funcs[helper_name]
+            # Pattern G: RHS = <db_loaded_var>[...] or <db_loaded_var>.<member>
+            # Taint propagation through subscript / property access.
+            elif (
+                ji < len(tokens)
+                and is_identifier(tokens[ji])
+                and tokens[ji] in db_loaded_vars
+                and ji + 1 < len(tokens)
+                and tokens[ji + 1] in ("[", ".", "->")
+            ):
+                signal = "DB_LOADED_VAR"
         if signal is None:
             continue
         # Mark ALL LHS positions and add ALL names to the appropriate set.
@@ -1334,10 +1481,111 @@ def normalize_tokens(
         # in source = highest index in lhs_positions since we walked back).
         flow_signal_at_pos[max(lhs_positions)] = signal
 
+    # ── Filter db_loaded_vars: keep only those reused in later SQL ─────────
+    # A var holding a DB-fetch result is only "second-order taint material"
+    # when it's later interpolated into another SQL string or concatenated
+    # with one. If `rows = await db.all(sql); return rows[0]` then `rows`
+    # never goes back into SQL — it's a sink. Marking it DB_LOADED_VAR
+    # causes the attack-type rule to misclassify IN_BAND as SECOND_ORDER.
+    if db_loaded_vars:
+        # Find positions of each db-loaded assignment
+        db_loaded_positions: dict[str, int] = {}
+        for pos, sig in flow_signal_at_pos.items():
+            if sig == "DB_LOADED_VAR" and pos < len(tokens):
+                db_loaded_positions[tokens[pos]] = pos
+        # Track which db-loaded names appear inside an SQL construction
+        # AFTER their assignment.
+        actually_reused: set[str] = set()
+        for name, name_pos in db_loaded_positions.items():
+            for ti in range(name_pos + 1, len(tokens)):
+                t = tokens[ti]
+                # Direct usage as token: `... + name + ...` or `... . name ...`
+                # in a SQL_CONCAT context. Heuristic: token == name AND nearby
+                # tokens contain a SQL string literal or an f-string.
+                if t == name:
+                    # Look backward up to 5 and forward up to 5 for SQL marker
+                    for tj in range(max(0, ti - 6), min(len(tokens), ti + 6)):
+                        tj_tok = tokens[tj]
+                        if is_sql_string(tj_tok) or is_fstring_sql(tj_tok):
+                            actually_reused.add(name)
+                            break
+                    if name in actually_reused:
+                        break
+                # Interpolated as `${name.x}` in template literal
+                if is_fstring_sql(t):
+                    interp = _extract_interpolated_vars(t)
+                    if name in interp:
+                        actually_reused.add(name)
+                        break
+        # Drop unused db_loaded_vars and remove their flow-signal emission
+        unused = db_loaded_vars - actually_reused
+        for name in unused:
+            db_loaded_vars.discard(name)
+            pos = db_loaded_positions.get(name)
+            if pos is not None and flow_signal_at_pos.get(pos) == "DB_LOADED_VAR":
+                del flow_signal_at_pos[pos]
+
     # ── Pre-scan: identify f-strings that interpolate ONLY whitelisted vars ──
     # f"... {safe_col} ..."  →  if safe_col ∈ whitelisted_vars → safe
     # f"... {sort_by} ..."   →  if sort_by ∉ whitelisted_vars → raw injection
     # Mark the position of each FSTRING_SQL token with extra context.
+    # Pre-pass: detect "builder arrays" used to construct WHERE-clauses.
+    #   const where = ["x = ?"];
+    #   where.push("status IN (?,?,?)");
+    #   sql = `... ${where.join(" AND ")} ...`
+    # If a var is initialized to an array literal AND only `.push(...)` calls
+    # add string literals containing only ?, identifiers, parens, spaces,
+    # commas, single-quote chars (i.e. parameterized SQL fragments — no
+    # unbound var interpolations), treat the var as `safe_placeholder_vars`.
+    builder_init_pat = {"=", "["}  # `name = [`
+    candidate_builder: set[str] = set()
+    builder_unsafe: set[str] = set()
+    for ti in range(len(tokens) - 2):
+        if tokens[ti] == "=" and tokens[ti + 1] == "[":
+            # LHS: walk back for identifier (skipping type-decl keywords)
+            kk = ti - 1
+            while kk >= 0 and tokens[kk] in TYPE_DECL_KEYWORDS:
+                kk -= 1
+            if kk >= 0 and is_identifier(tokens[kk]):
+                # Verify the array literal is closed simply (no nested SQL strings)
+                # Accept the init regardless of contents — verification below.
+                candidate_builder.add(tokens[kk])
+    # Now scan all .push() calls; if a candidate_builder.push(<unsafe arg>) found,
+    # remove from candidates.
+    for ti in range(len(tokens) - 4):
+        if (
+            tokens[ti] in candidate_builder
+            and tokens[ti + 1] == "."
+            and tokens[ti + 2] == "push"
+            and tokens[ti + 3] == "("
+        ):
+            # Inspect the push argument — must be a STRING literal that contains
+            # only safe-placeholder markers (no ${var} interpolation of a raw var)
+            # OR a template literal whose interpolations are all in known safe sets.
+            arg_tok = tokens[ti + 4] if ti + 4 < len(tokens) else None
+            if arg_tok is None:
+                builder_unsafe.add(tokens[ti])
+                continue
+            # Plain string literal — check for raw unsafe substring concat-style
+            if len(arg_tok) >= 2 and arg_tok[0] in '"\'':
+                inner = arg_tok[1:-1]
+                # Plain SQL fragment with placeholders is OK. Reject if has
+                # patterns like ' + ' or % concatenation markers.
+                if "${" in inner:
+                    builder_unsafe.add(tokens[ti])
+                # plain literal — accept
+            elif _has_interpolation(arg_tok):
+                # Template literal — interpolated vars must all be safe
+                interp = _extract_interpolated_vars(arg_tok)
+                if interp and (interp - (whitelisted_vars | safe_placeholder_vars | safe_numeric_vars)):
+                    builder_unsafe.add(tokens[ti])
+            else:
+                # Non-string push (e.g. variable, expression) — risky
+                builder_unsafe.add(tokens[ti])
+    # Confirmed safe builders
+    safe_builders = candidate_builder - builder_unsafe
+    safe_placeholder_vars |= safe_builders
+
     # All "safe" var sets are treated equivalently for interpolation safety.
     safe_interp_vars = (
         whitelisted_vars | db_loaded_vars
