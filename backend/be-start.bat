@@ -27,3 +27,6 @@ echo Press Ctrl+C to stop.
 echo.
 
 %PYTHON% -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+
+
+@REM test
