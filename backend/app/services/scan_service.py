@@ -31,7 +31,12 @@ from app.core.constants import ALLOWED_EXTENSIONS
 from app.db.database import get_audit_logs_collection
 from app.preprocessing.code_cleaner import clean_code
 from app.preprocessing.tokenizer import tokenize_code
-from app.preprocessing.normalizer import normalize_tokens, extract_safe_returning_funcs
+from app.preprocessing.normalizer import (
+    normalize_tokens,
+    extract_safe_returning_funcs,
+    extract_numeric_returning_funcs,
+    extract_db_returning_funcs,
+)
 from app.preprocessing.chunker import split_into_chunks
 from app.schemas.scan import (
     CleanCodePayload,
@@ -59,7 +64,7 @@ VOCABULARY = build_fixed_vocabulary()
 # ── Signal severity weights ───────────────────────────────────────────────────
 
 # HIGH signals that alone (or in combination) prove a vulnerability
-HIGH_SIGNALS = {"FSTRING_SQL", "SQL_CONCAT", "FSTRING_SQL_RAW"}
+HIGH_SIGNALS = {"FSTRING_SQL", "SQL_CONCAT", "FSTRING_SQL_RAW", "SECOND_ORDER_FLOW"}
 
 # Signals that are dangerous when combined with a SQL context
 MEDIUM_SIGNALS = {"UNSAFE_EXEC"}
@@ -74,6 +79,7 @@ ALWAYS_VULNERABLE_COMBOS = [
     {"FSTRING_SQL"},                      # f-string SQL alone is enough
     {"FSTRING_SQL_RAW"},                  # f-string with RAW interpolated var (always)
     {"SQL_CONCAT"},                       # concat alone is enough
+    {"SECOND_ORDER_FLOW"},                # DB-loaded value reused as SQL text
 ]
 
 
@@ -243,7 +249,18 @@ def _fuse_scores(
     if has_fstring_raw:
         return max(rule_score, 0.90), "rule"
 
-    # 2a. Confident-safe, no dangerous rule signal at all → ML wins outright
+    # 2a. Chunks with no SQL/security semantic signal at all are boilerplate
+    # (class shell, constructor, imports, DTOs).  The ML model can have a
+    # noise floor on these short chunks; do not let them dominate file-level
+    # max-pooling.
+    sql_semantic_signals = (
+        HIGH_SIGNALS | MEDIUM_SIGNALS | SAFE_SIGNALS |
+        {"WHITELIST_VAR", "DB_LOADED_VAR", "BOOLEAN_SINK", "SQL_STRING"}
+    )
+    if not (signals & sql_semantic_signals):
+        return min(ml_score, rule_score), "rule"
+
+    # 2b. Confident-safe, no dangerous rule signal at all → ML wins outright
     if ml_score < 0.05 and not has_fstring and not has_concat:
         return ml_score, "ml"
 
@@ -284,6 +301,8 @@ def _analyse_chunk(
     code: str,
     chunk_name: str,
     extra_safe_funcs: set[str] | None = None,
+    extra_numeric_funcs: set[str] | None = None,
+    extra_db_loaded_funcs: set[str] | None = None,
 ) -> dict:
     """
     Run preprocessing + ML inference on a single code chunk.
@@ -291,7 +310,12 @@ def _analyse_chunk(
     """
     cleaned  = clean_code(code)
     tokens   = tokenize_code(cleaned)
-    norm     = normalize_tokens(tokens, extra_safe_funcs=extra_safe_funcs)
+    norm     = normalize_tokens(
+        tokens,
+        extra_safe_funcs=extra_safe_funcs,
+        extra_numeric_funcs=extra_numeric_funcs,
+        extra_db_loaded_funcs=extra_db_loaded_funcs,
+    )
     vec      = vectorize_tokens(norm, VOCABULARY)
     signals  = set(norm)
 
@@ -412,11 +436,19 @@ def _build_detection(
     # though `normalize_sort` is defined in a different chunk.
     full_tokens = tokenize_code(clean_code(raw_code))
     file_safe_funcs = extract_safe_returning_funcs(full_tokens)
+    file_numeric_funcs = extract_numeric_returning_funcs(full_tokens)
+    file_db_loaded_funcs = extract_db_returning_funcs(full_tokens)
 
     # Analyse every chunk
     results = []
     for chunk_name, chunk_code in chunks:
-        r = _analyse_chunk(chunk_code, chunk_name, extra_safe_funcs=file_safe_funcs)
+        r = _analyse_chunk(
+            chunk_code,
+            chunk_name,
+            extra_safe_funcs=file_safe_funcs,
+            extra_numeric_funcs=file_numeric_funcs,
+            extra_db_loaded_funcs=file_db_loaded_funcs,
+        )
         results.append(r)
 
     # Max-pool: pick the chunk with the highest fused score
@@ -541,19 +573,19 @@ def _build_detection(
     # When type-head argmax is uncertain (often the case until model fully
     # trains on flow signals), use deterministic flow-signal logic:
     #   BOOLEAN_SINK + dangerous SQL signal → BLIND
-    #   DB_LOADED_VAR + dangerous SQL signal (no BOOLEAN_SINK) → SECOND_ORDER
+    #   SECOND_ORDER_FLOW → SECOND_ORDER
     #   Other dangerous SQL → IN_BAND
     # The override applies whenever the file is VULNERABLE/SUSPICIOUS — file
     # is unsafe by ML, and we just need to label the kind of unsafe.
     if label in ("VULNERABLE", "SUSPICIOUS"):
         has_bool_sink = "BOOLEAN_SINK" in all_signals
-        has_db_loaded = "DB_LOADED_VAR" in all_signals
-        has_dangerous = bool(all_signals & {"FSTRING_SQL", "SQL_CONCAT", "UNSAFE_EXEC"})
+        has_second_order_flow = "SECOND_ORDER_FLOW" in all_signals
+        has_dangerous = bool(all_signals & {"FSTRING_SQL", "FSTRING_SQL_RAW", "SQL_CONCAT", "UNSAFE_EXEC", "SECOND_ORDER_FLOW"})
         rule_attack_type = None
-        if has_bool_sink and has_dangerous:
-            rule_attack_type = "BLIND"
-        elif has_db_loaded and has_dangerous and not has_bool_sink:
+        if has_second_order_flow:
             rule_attack_type = "SECOND_ORDER"
+        elif has_bool_sink and has_dangerous:
+            rule_attack_type = "BLIND"
         elif has_dangerous:
             rule_attack_type = "IN_BAND"
         if rule_attack_type is not None:

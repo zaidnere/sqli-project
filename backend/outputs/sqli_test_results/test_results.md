@@ -1,96 +1,40 @@
 # SQLi Test Suite Results
 
-- Total: **18**
-- Passed: **9**
-- Failed: **9**
+- Total: **32**
+- Passed: **32**
+- Failed: **0**
 
 | # | File | Expected | Actual | Risk | Pass |
 |---:|---|---|---|---:|---|
-| 1 | `python/001_SAFE_flask_inventory_repository.py` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 2 | `python/002_IN_BAND_flask_customer_search_vulnerable.py` | VULNERABLE / IN_BAND | VULNERABLE / SECOND_ORDER | 0.9 | ❌ |
-| 3 | `python/003_BLIND_flask_permission_check.py` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
-| 4 | `python/004_SECOND_ORDER_saved_report_runner.py` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
-| 5 | `python/005_SAFE_analytics_dashboard_complex.py` | SAFE / NONE | VULNERABLE / SECOND_ORDER | 0.9 | ❌ |
-| 6 | `javascript/006_SAFE_express_orders_repository.js` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 7 | `javascript/007_IN_BAND_express_template_where_vuln.js` | VULNERABLE / IN_BAND | VULNERABLE / SECOND_ORDER | 0.9 | ❌ |
-| 8 | `javascript/008_BLIND_feature_flag_check_vuln.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
-| 9 | `javascript/009_SECOND_ORDER_saved_segment_runner.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 10 | `javascript/010_SAFE_reports_query_builder.js` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 11 | `java/011_SAFE_SpringOrderRepository.java` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 12 | `java/012_IN_BAND_legacyStatementSearch.java` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
-| 13 | `java/013_BLIND_LoginServiceStatement.java` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
-| 14 | `java/014_SECOND_ORDER_AuditArchiveService.java` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
-| 15 | `php/015_SAFE_PdoInventoryRepository.php` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 16 | `php/016_IN_BAND_mysqli_customer_search.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
-| 17 | `php/017_BLIND_FeatureFlagService.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
-| 18 | `php/018_SECOND_ORDER_ProfileAudit.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
-
-## Failures
-
-### `python/001_SAFE_flask_inventory_repository.py`
-
-- Expected: `SAFE / NONE`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Explanation: High risk score (90%) from ML model.
-
-### `python/002_IN_BAND_flask_customer_search_vulnerable.py`
-
-- Expected: `VULNERABLE / IN_BAND`
-- Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `0.9`
-- Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 6 chunk(s) — worst chunk scored 90%.
-
-### `python/005_SAFE_analytics_dashboard_complex.py`
-
-- Expected: `SAFE / NONE`
-- Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `0.9`
-- Explanation: High risk score (90%) from ML model.
-
-### `javascript/006_SAFE_express_orders_repository.js`
-
-- Expected: `SAFE / NONE`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Explanation: High risk score (90%) from ML model.
-
-### `javascript/007_IN_BAND_express_template_where_vuln.js`
-
-- Expected: `VULNERABLE / IN_BAND`
-- Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `0.9`
-- Patterns: `FSTRING_SQL | UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected: FSTRING_SQL + UNSAFE_EXEC. Risk score: 90%. File analysed in 3 chunk(s) — worst chunk scored 90%.
-
-### `javascript/009_SECOND_ORDER_saved_segment_runner.js`
-
-- Expected: `VULNERABLE / SECOND_ORDER`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Patterns: `SQL_CONCAT | UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected: SQL_CONCAT + UNSAFE_EXEC. Risk score: 90%. File analysed in 3 chunk(s) — worst chunk scored 90%.
-
-### `javascript/010_SAFE_reports_query_builder.js`
-
-- Expected: `SAFE / NONE`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Explanation: High risk score (90%) from ML model.
-
-### `java/011_SAFE_SpringOrderRepository.java`
-
-- Expected: `SAFE / NONE`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 5 chunk(s) — worst chunk scored 90%.
-
-### `php/015_SAFE_PdoInventoryRepository.php`
-
-- Expected: `SAFE / NONE`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Patterns: `SQL_CONCAT | UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected: SQL_CONCAT + UNSAFE_EXEC. Risk score: 90%. File analysed in 4 chunk(s) — worst chunk scored 90%.
+| 1 | `python/001_NONE_safe_direct_whitelist_order_by.py` | SAFE / NONE | SAFE / NONE |  | ✅ |
+| 2 | `python/002_IN_BAND_vuln_whitelist_computed_but_raw_used.py` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 3 | `python/003_NONE_safe_helper_pick_allowed_order_by.py` | SAFE / NONE | SAFE / NONE | 0.0002 | ✅ |
+| 4 | `python/004_IN_BAND_vuln_helper_whitelist_but_raw_used.py` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 5 | `python/005_NONE_safe_dict_map_table.py` | SAFE / NONE | SAFE / NONE |  | ✅ |
+| 6 | `python/006_IN_BAND_vuln_dict_map_computed_but_raw_used.py` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 7 | `python/007_NONE_safe_placeholder_list_execute_params.py` | SAFE / NONE | SAFE / NONE |  | ✅ |
+| 8 | `python/008_IN_BAND_vuln_joined_raw_ids.py` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 9 | `javascript/009_NONE_safe_placeholder_list_js.js` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
+| 10 | `javascript/010_IN_BAND_vuln_joined_ids_js.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
+| 11 | `python/011_NONE_safe_limit_offset_int_minmax.py` | SAFE / NONE | SAFE / NONE |  | ✅ |
+| 12 | `python/012_IN_BAND_vuln_raw_limit_offset.py` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 13 | `javascript/013_NONE_safe_limit_offset_number_js.js` | SAFE / NONE | SAFE / NONE | 0.0322 | ✅ |
+| 14 | `javascript/014_IN_BAND_vuln_raw_limit_offset_js.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9414 | ✅ |
+| 15 | `javascript/015_BLIND_vuln_count_bool_js.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
+| 16 | `javascript/016_NONE_safe_count_bool_js.js` | SAFE / NONE | SAFE / NONE |  | ✅ |
+| 17 | `java/017_BLIND_vuln_resultset_next.java` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
+| 18 | `java/018_NONE_safe_resultset_next_prepared.java` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
+| 19 | `php/019_BLIND_vuln_count_bool_php.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
+| 20 | `php/020_NONE_safe_count_bool_php.php` | SAFE / NONE | SAFE / NONE |  | ✅ |
+| 21 | `javascript/021_SECOND_ORDER_vuln_cached_fragment_js.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
+| 22 | `javascript/022_NONE_safe_db_value_param_js.js` | SAFE / NONE | SAFE / NONE |  | ✅ |
+| 23 | `java/023_SECOND_ORDER_vuln_resultset_getstring.java` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
+| 24 | `java/024_NONE_safe_resultset_param_reuse.java` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
+| 25 | `php/025_SECOND_ORDER_vuln_fetch_assoc_reuse.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
+| 26 | `php/026_NONE_safe_fetch_assoc_param_reuse.php` | SAFE / NONE | SAFE / NONE |  | ✅ |
+| 27 | `javascript/027_NONE_safe_set_has_order_by_js.js` | SAFE / NONE | SAFE / NONE | 0.0034 | ✅ |
+| 28 | `javascript/028_IN_BAND_vuln_set_has_but_raw_used_js.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 29 | `java/029_NONE_safe_set_contains_order_by.java` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
+| 30 | `java/030_IN_BAND_vuln_set_contains_but_raw_used.java` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 31 | `php/031_NONE_safe_array_map_order_by.php` | SAFE / NONE | SAFE / NONE | 0.1 | ✅ |
+| 32 | `php/032_IN_BAND_vuln_array_map_but_raw_used.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9781 | ✅ |
