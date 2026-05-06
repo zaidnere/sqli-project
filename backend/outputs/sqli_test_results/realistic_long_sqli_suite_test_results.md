@@ -15,8 +15,8 @@
 | 7 | `javascript/007_IN_BAND_express_template_where_vuln.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
 | 8 | `javascript/008_BLIND_feature_flag_check_vuln.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
 | 9 | `javascript/009_SECOND_ORDER_saved_segment_runner.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
-| 10 | `javascript/010_SAFE_reports_query_builder.js` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 11 | `java/011_SAFE_SpringOrderRepository.java` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
+| 10 | `javascript/010_SAFE_reports_query_builder.js` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
+| 11 | `java/011_SAFE_SpringOrderRepository.java` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
 | 12 | `java/012_IN_BAND_legacyStatementSearch.java` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
 | 13 | `java/013_BLIND_LoginServiceStatement.java` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
 | 14 | `java/014_SECOND_ORDER_AuditArchiveService.java` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |

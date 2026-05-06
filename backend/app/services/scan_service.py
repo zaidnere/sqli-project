@@ -104,23 +104,24 @@ def _rx(pattern: str, text: str, flags: int = re.I | re.S) -> bool:
     return re.search(pattern, text, flags) is not None
 
 
+
 def _raw_safe_sqlite_param_js(code: str) -> bool:
     """SQLite-style JS parameter binding: const sql='... ? ...'; db.all(sql,[x])."""
     c = _strip_comments(code, "javascript")
-    # SQL variable with ? placeholders, assigned from a static quoted string.
+    # SQL variable with ? placeholders, assigned from a static quoted/template string.
     sql_vars = set()
-    for m in re.finditer(r"\b(?:const|let|var)\s+(\w+)\s*=\s*(['\"])(?=[^\2]*\?)(?:SELECT|INSERT|UPDATE|DELETE)[\s\S]*?\2\s*;", c, re.I):
-        sql_vars.add(m.group(1))
+    for m in re.finditer(r"\b(?:const|let|var)\s+(\w+)\s*=\s*(['\"`])(?=[\s\S]*?\?)(?:[\s\S]*?(?:SELECT|INSERT|UPDATE|DELETE))[\s\S]*?\2\s*;", c, re.I):
+        val = m.group(0)
+        if "${" not in val:
+            sql_vars.add(m.group(1))
     if not sql_vars:
         return False
-    # Params may be passed as an array literal or as a variable assigned to array.
     param_vars = {m.group(1) for m in re.finditer(r"\b(?:const|let|var)\s+(\w+)\s*=\s*\[[^\]]*\]\s*;", c)}
     for v in sql_vars:
         call_array = rf"\b\w+\s*\.\s*(?:all|get|run|each)\s*\(\s*{re.escape(v)}\s*,\s*\[[^\]]*\]"
         call_var = rf"\b\w+\s*\.\s*(?:all|get|run|each)\s*\(\s*{re.escape(v)}\s*,\s*(?:{'|'.join(map(re.escape, param_vars))})\b" if param_vars else r"a^"
         if _rx(call_array, c) or _rx(call_var, c):
-            # Reject if the same variable is also rebuilt dynamically.
-            dyn = rf"\b{re.escape(v)}\s*(?:\+=|=\s*`|=\s*[^;]*\+|=\s*[^;]*\.join\s*\()"
+            dyn = rf"\b{re.escape(v)}\s*(?:\+=|=\s*`[^`]*\$\{{|=\s*[^;]*\+|=\s*[^;]*\.join\s*\()"
             if not _rx(dyn, c):
                 return True
     return False
@@ -129,50 +130,128 @@ def _raw_safe_sqlite_param_js(code: str) -> bool:
 def _raw_safe_numeric_limit_offset(code: str, language: str) -> bool:
     c = _strip_comments(code, language)
     if language == "python":
-        # limit/offset created via int() and bounded via min/max, then inserted
-        # only through numeric %d positions in LIMIT/OFFSET.
-        has_limit = _rx(r"\blimit\s*=\s*max\s*\([^\n;]*min\s*\([^\n;]*int\s*\(", c)
-        has_offset = _rx(r"\boffset\s*=\s*max\s*\([^\n;]*min\s*\([^\n;]*int\s*\(", c)
-        safe_format = _rx(r"LIMIT\s+%d\s+OFFSET\s+%d[^\n;]*%\s*\(\s*limit\s*,\s*offset\s*\)", c)
-        if has_limit and has_offset and safe_format:
+        # Covers helper forms: limit = clamp(parse_int(...)); offset = clamp(parse_int(...))
+        # and inline max/min/int forms. Safe only if executed with params or numeric formatting.
+        has_limit = _rx(r"\blimit\s*=\s*(?:clamp\s*\(\s*parse_int\s*\(|max\s*\([^\n;]*min\s*\([^\n;]*int\s*\()", c)
+        has_offset = _rx(r"\boffset\s*=\s*(?:clamp\s*\(\s*parse_int\s*\(|max\s*\([^\n;]*min\s*\([^\n;]*int\s*\()", c)
+        safe_use = _rx(r"LIMIT\s+(?:%d|\{\s*limit\s*\}|\{limit\})\s+OFFSET\s+(?:%d|\{\s*offset\s*\}|\{offset\})", c)
+        if has_limit and has_offset and safe_use:
             return True
     if language == "javascript":
-        has_limit = _rx(r"\blimit\s*=\s*Math\.max\s*\([^;]*Math\.min\s*\([^;]*Number\s*\(", c)
-        has_offset = _rx(r"\boffset\s*=\s*Math\.max\s*\([^;]*Math\.min\s*\([^;]*Number\s*\(", c)
+        has_limit = _rx(r"\blimit\s*=\s*(?:clamp\s*\(|Math\.max\s*\([^;]*Math\.min\s*\([^;]*(?:Number|parseInt)\s*\()", c)
+        has_offset = _rx(r"\boffset\s*=\s*(?:clamp\s*\(|Math\.max\s*\([^;]*Math\.min\s*\([^;]*(?:Number|parseInt)\s*\()", c)
         safe_template = _rx(r"LIMIT\s+\$\{\s*limit\s*\}\s+OFFSET\s+\$\{\s*offset\s*\}", c)
         if has_limit and has_offset and safe_template:
             return True
     if language == "php":
-        has_limit = _rx(r"\$limit\s*=\s*max\s*\([^;]*min\s*\([^;]*\(\s*int\s*\)\s*\$", c)
-        has_offset = _rx(r"\$offset\s*=\s*max\s*\([^;]*min\s*\([^;]*\(\s*int\s*\)\s*\$", c)
-        safe_query = _rx(r"LIMIT\s+\$limit\s+OFFSET\s+\$offset", c)
+        has_limit = _rx(r"\$limit\s*=\s*(?:clamp_int\s*\(|max\s*\([^;]*min\s*\([^;]*\(\s*int\s*\)\s*\$)", c)
+        has_offset = _rx(r"\$offset\s*=\s*(?:clamp_int\s*\(|max\s*\([^;]*min\s*\([^;]*\(\s*int\s*\)\s*\$)", c)
+        safe_query = _rx(r"LIMIT\s+(?:\{\$limit\}|\$limit)\s+OFFSET\s+(?:\{\$offset\}|\$offset)", c)
         if has_limit and has_offset and safe_query:
             return True
     return False
 
 
-def _raw_second_order_stored_sql(code: str, language: str) -> bool:
+def _raw_safe_query_builder(code: str, language: str) -> bool:
+    """Recognize a complete safe dynamic query-builder sink, not isolated SAFE_EXEC."""
     c = _strip_comments(code, language)
-    # DB/config/cache load of SQL-ish fields followed by executing that value as SQL.
-    sqlish = r"(?:sql_text|sql_script|saved_sql|stored_sql|admin_query|query_text|where_clause|filter|predicate|fragment|order_expression|clause|config)"
+    if _raw_second_order_stored_sql(code, language):
+        return False
     if language == "python":
-        stored_select = r"SELECT[^\n;]*(?:sql_script|sql_text|saved_sql|where_clause|filter|predicate|fragment|order_expression|app_config|admin_macros|config|settings|cache)[^\n;]*"
-        if _rx(stored_select, c) and _rx(r"\.executescript\s*\(\s*\w+\s*\)|\.execute\s*\(\s*\w+\s*\)", c):
+        # Values are bound through params; identifiers are selected from dict/map or fixed direction; numeric paging is bounded.
+        has_param_exec = _rx(r"\.execute\s*\(\s*sql\s*,\s*(?:params|\[[^\]]*\])\s*\)", c)
+        has_allowlist = _rx(r"\b\w+\s*=\s*(?:self\.)?\w+\.get\s*\([^,]+,\s*['\"][\w\.]+['\"]\s*\)", c) or _rx(r"\bSORTS\s*=\s*\{", c)
+        has_order = _rx(r"ORDER\s+BY\s+\{\s*\w+\s*\}", c) or _rx(r"ORDER\s+BY\s*\"?\s*\+\s*\w+", c)
+        raw_used = _rx(r"ORDER\s+BY\s+\{\s*(?:raw_|requested_|args\.|request\.)", c) or _rx(r"\+\s*(?:raw_where|debug_sql|args\[|args\.get\([^)]*where)", c)
+        if has_param_exec and (has_allowlist or _raw_safe_numeric_limit_offset(code, language)) and has_order and not raw_used:
             return True
-        if _rx(r"app_config|admin_macros|settings|cache|config", c) and _rx(r"\b\w+\s*=\s*.*fetchone\s*\(\s*\)\s*\[\s*0\s*\]", c) and _rx(r"\+\s*\w+|\.executescript\s*\(\s*\w+\s*\)", c):
+        # Safe decoy-style parameterized WHERE builder with allowlisted ORDER.
+        if has_param_exec and has_allowlist and _rx(r"params\.(?:append|extend)\s*\(", c) and not raw_used:
             return True
     elif language == "javascript":
-        if _rx(rf"SELECT[^;]*(?:{sqlish})[^;]*(?:db\.(?:get|all)|await)", c) and _rx(r"\+\s*\w+\.\w+|db\.(?:exec|all|get|run)\s*\(\s*\w+(?:\.\w+)?\s*\)", c):
+        has_param_exec = _rx(r"\.\s*(?:all|get|run|each)\s*\(\s*sql\s*,\s*params\s*\)", c)
+        has_allowlist = _rx(r"\.sorts\.get\s*\(", c) or _rx(r"new\s+Map\s*\(\s*\[", c) or _rx(r"Set\s*\(", c)
+        has_numeric = _raw_safe_numeric_limit_offset(code, language) or _rx(r"\b(?:limit|offset)\s*=\s*clamp\s*\(", c)
+        raw_used = _rx(r"ORDER\s+BY\s+\$\{\s*(?:query\.|req\.|raw)", c) or _rx(r"\+\s*(?:query\.|req\.|raw)", c)
+        if has_param_exec and (has_allowlist or has_numeric) and not raw_used:
             return True
     elif language == "java":
-        if _rx(rf"SELECT[^;]*(?:{sqlish})", c) and _rx(r"\.execute(?:Query|Update)?\s*\(\s*rs\.getString\s*\(", c):
-            return True
-        if _rx(rf"(?:config|cache|settings).*{sqlish}", c) and _rx(r"\+\s*\w+|\.execute(?:Query|Update)?\s*\(\s*\w+\s*\)", c):
+        has_prepared = _rx(r"prepareStatement\s*\(\s*sql\s*\)", c) and _rx(r"\.set(?:String|Int|Long|Object|Double|Boolean)\s*\(", c) and _rx(r"\.execute(?:Query|Update)\s*\(\s*\)", c)
+        has_allowlist = _rx(r"\.contains\s*\(\s*\w+\s*\)\s*\?\s*\w+\s*:", c) or _rx(r"Set\s*<\s*String\s*>|Set\.of|Arrays\.asList", c)
+        raw_order = _rx(r"ORDER\s+BY\s*\"\s*\+\s*(?:sort|orderBy|raw)", c)
+        if has_prepared and has_allowlist and not raw_order:
             return True
     elif language == "php":
-        if _rx(rf"SELECT[^;]*(?:{sqlish})", c) and _rx(r"fetchColumn\s*\(\s*\)|fetch_assoc\s*\(|fetch\s*\(\s*PDO::FETCH_ASSOC", c) and _rx(r"->\s*query\s*\(\s*\$\w+\s*\)|->\s*exec\s*\(\s*\$\w+\s*\)|\.\s*\$\w+\s*\[", c):
+        has_pdo = _rx(r"->\s*prepare\s*\(\s*\$sql\s*\).*?->\s*execute\s*\(\s*\$params\s*\)", c)
+        has_allowlist = _rx(r"\$\w+\s*=\s*\$this->\w+\s*\[", c) or _rx(r"\$\w+\s*=\s*\$\w+\s*\[\s*\$\w+\s*\]\s*\?\?", c)
+        has_numeric = _raw_safe_numeric_limit_offset(code, language)
+        if has_pdo and (has_allowlist or has_numeric):
             return True
-        if _rx(r"fetch_assoc\s*\(\s*\)", c) and _rx(r"\$\w+\s*=\s*\$\w+\s*\[", c) and _rx(r"\$sql\s*=.*\.\s*\$\w+\s*\.", c) and _rx(r"mysqli_query\s*\([^,]+,\s*\$sql\s*\)|->\s*query\s*\(\s*\$sql\s*\)", c):
+    return False
+
+
+
+def _raw_safe_db_loaded_as_bound_param(code: str, language: str) -> bool:
+    """DB-loaded value is safe when it is only passed as a bound parameter to another static SQL statement."""
+    c = _strip_comments(code, language)
+    if language == "python":
+        # Load value with parameterized SELECT, return row[field], then execute a static placeholder query with that value in params.
+        loads_value = _rx(r"SELECT[^\n;]+FROM[^\n;]+WHERE[^\n;]+\?", c) and _rx(r"return\s+row\s*\[\s*['\"]\w+['\"]\s*\]", c)
+        bound_later = _rx(r"\.execute\s*\(\s*sql\s*,\s*\[[^\]]*\w+[^\]]*\]\s*\)", c) and _rx(r"\?", c)
+        no_sql_syntax_use = not _rx(r"\+\s*\w+\s*(?:\+|$)|\{\s*\w+\s*\}", c)
+        return loads_value and bound_later and no_sql_syntax_use
+    if language == "javascript":
+        return _rx(r"SELECT[^;]+\?", c) and _rx(r"db\.(?:all|get|run)\s*\(\s*sql\s*,\s*\[[^\]]*\w+[^\]]*\]", c) and not _rx(r"\+\s*\w+|\$\{\s*\w+\s*\}", c)
+    if language == "java":
+        return _rx(r"prepareStatement\s*\([^)]*\?", c) and _rx(r"\.set(?:String|Int|Long|Object)\s*\([^,]+,\s*\w+\s*\)", c) and not _rx(r"\+\s*\w+|createStatement\s*\(\s*\)\.execute", c)
+    if language == "php":
+        return _rx(r"->\s*prepare\s*\([^)]*\?", c) and _rx(r"->\s*execute\s*\(\s*\[[^\]]*\$\w+", c) and not _rx(r"\.\s*\$\w+|->\s*query\s*\(\s*\$sql\s*\)", c)
+    return False
+
+
+def _raw_second_order_stored_sql(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    sqlish = r"(?:sql_body|sql_text|sql_script|saved_sql|stored_sql|admin_query|query_sql|query_text|where_clause|where_fragment|filter|predicate|fragment|order_expression|order_clause|condition|clause|config)"
+    if language == "python":
+        # Helper loads SQL-ish DB/config/cache field and caller executes or concatenates it.
+        if _rx(rf"SELECT[\s\S]*?(?:{sqlish})[\s\S]*?(?:fetchone|fetchall)", c) and _rx(r"(?:executescript|execute)\s*\(\s*\w+\s*\)|\+\s*\w+(?:\s|\+|\})", c):
+            return True
+        if _rx(rf"(?:cache|config|settings|widget|filter|row)\.get\s*\([^)]*(?:{sqlish})[^)]*\)|\w+\s*=\s*\w+\[\s*['\"](?:{sqlish})['\"]\s*\]", c) and _rx(r"ORDER\s+BY\s*\"?\s*\+\s*\w+|AND\s*\"?\s*\+\s*\w+|executescript\s*\(\s*\w+\s*\)", c):
+            return True
+        if _rx(r"def\s+load\w*sql[\s\S]*?SELECT[\s\S]*?sql_", c) and _rx(r"executescript\s*\(\s*\w+\s*\)", c):
+            return True
+    elif language == "javascript":
+        if _rx(rf"SELECT[\s\S]*?(?:{sqlish})[\s\S]*?db\.(?:get|all)", c) and _rx(r"const\s+\w+\s*=\s*\w+\.(?:query_sql|sql_body|where_clause|where_fragment|order_clause|filter|condition)", c) and _rx(r"db\.(?:exec|all|get|run)\s*\(\s*\w+\s*\)", c):
+            return True
+        if _rx(rf"load\w*\s*\([^)]*\)[\s\S]*?(?:{sqlish})", c) and _rx(r"db\.(?:exec|all|get|run)\s*\(\s*\w+\s*\)", c):
+            return True
+    elif language == "java":
+        if _rx(rf"SELECT[\s\S]*?(?:{sqlish})[\s\S]*?getString\s*\(\s*['\"](?:{sqlish})['\"]\s*\)", c) and _rx(r"\+\s*\w+|execute(?:Query|Update)?\s*\(\s*\w+\s*\)", c):
+            return True
+        if _rx(r"String\s+\w+\s*=\s*load\w*\s*\(", c) and _rx(r"createStatement\s*\(\s*\)\.execute(?:Query|Update)?\s*\(\s*\w+\s*\)", c):
+            return True
+        if _rx(r"tenant_config[\s\S]*?getString\s*\(\s*['\"]value['\"]\s*\)", c) and _rx(r"String\s+\w+\s*=\s*\w+\s*\([^)]*\)\s*;[\s\S]*?\+\s*\w+\s*;[\s\S]*?createStatement\s*\(\s*\)\.executeQuery\s*\(\s*sql\s*\)", c):
+            return True
+        if _rx(r"executeQuery\s*\(\s*rs\.getString\s*\(\s*['\"](?:sql_text|sql_body|query_sql|where_clause|fragment)['\"]\s*\)\s*\)", c):
+            return True
+        if _rx(r"cache\.put\s*\([^;]*rs\.getString", c) and _rx(r"\+\s*cache\.get\s*\(", c):
+            return True
+    elif language == "php":
+        if _rx(rf"SELECT[\s\S]*?(?:{sqlish})[\s\S]*?fetch", c) and _rx(r"\$\w+\s*=\s*\$\w+\[\s*['\"](?:sql_body|sql_text|query_sql|where_clause|where_fragment|order_clause|filter|condition)['\"]\s*\]", c) and _rx(r"->\s*(?:query|exec|prepare)\s*\(\s*\$\w+\s*\)|\.\s*\$\w+", c):
+            return True
+        if _rx(r"function\s+load\w*Sql[\s\S]*?SELECT[\s\S]*?sql_", c, re.I) and _rx(r"->\s*query\s*\(\s*\$\w+\s*\)", c):
+            return True
+        if _rx(r"loadFilter[\s\S]*?where_clause", c) and _rx(r"\.\s*\$where\s*\.", c):
+            return True
+        # Direct use of fetched SQL-ish column as SQL syntax.
+        if _rx(r"fetch\s*\(\s*PDO::FETCH_ASSOC\s*\)|fetch_assoc\s*\(\s*\)", c) and _rx(r'''\$sql\s*=\s*[^;]*\.\s*\$\w+\s*\[\s*['\"](?:where_clause|where_fragment|filter|predicate|condition|order_clause|sql_text|sql_body|query_sql)['\"]\s*\]''', c) and _rx(r"->\s*query\s*\(\s*\$sql\s*\)", c):
+            return True
+        if _rx(r"fetchColumn\s*\(\s*\)", c) and _rx(r"\$\w+\s*=\s*\$stmt->fetchColumn\s*\(\s*\)", c) and _rx(r"\$sql\s*=\s*[^;]*\.\s*\$\w+", c) and _rx(r"->\s*query\s*\(\s*\$sql\s*\)", c):
+            return True
+        if _rx(r"SELECT[^;]*(?:sql_text|sql_body|query_sql)[^;]*", c) and _rx(r"\$sql\s*=\s*\$stmt->fetchColumn\s*\(\s*\)", c) and _rx(r"->\s*query\s*\(\s*\$sql\s*\)", c):
+            return True
+        # Generic second-order PHP: value fetched from DB row/assoc result and reused as SQL syntax.
+        if _rx(r"fetch_assoc\s*\(\s*\)", c) and _rx(r'''\$\w+\s*=\s*\$\w+\s*\[\s*['\"]\w+['\"]\s*\]''', c) and _rx(r"\$sql\s*=\s*[^;]*\.\s*\$\w+\s*\.[^;]*;[\s\S]*(?:mysqli_query\s*\([^;]*\$sql|->\s*query\s*\(\s*\$sql\s*\))", c):
             return True
     return False
 
@@ -180,6 +259,9 @@ def _raw_second_order_stored_sql(code: str, language: str) -> bool:
 def _raw_blind_boolean_sink(code: str, language: str) -> bool:
     c = _strip_comments(code, language)
     if language == "python":
+        # Avoid treating ordinary list-returning repository methods as blind.
+        if _rx(r"return\s+\[\s*dict\s*\(\s*row\s*\)\s+for\s+row\s+in", c):
+            return False
         return (
             _rx(r"return\s+bool\s*\([^)]*(?:execute|fetchone)", c)
             or _rx(r"return\s+.*fetchone\s*\(\s*\)\s+is\s+not\s+None", c)
@@ -193,32 +275,31 @@ def _raw_blind_boolean_sink(code: str, language: str) -> bool:
             or (_rx(r"\b(?:const|let|var)\s+(\w+)\s*=\s*await\s+\w+\.(?:get|all)\s*\(", c) and _rx(r"return\s+(?:!!\s*\w+|Boolean\s*\(\s*\w+\s*\)|\w+\s*!==?\s*null|\w+\s*!==?\s*undefined)", c))
             or _rx(r"return\s+Boolean\s*\(\s*\w+\s*\)", c)
             or _rx(r"return\s+.*\.length\s*>\s*0", c)
-            or (_rx(r"\b(?:login|permission|feature|token|session|isAdmin|valid|allowed)", c) and _rx(r"return\s+(?:!!|Boolean|row|rows|result)", c))
+            or (_rx(r"\b(?:login|authenticate|permission|feature|token|session|isAdmin|valid|allowed)", c) and _rx(r"return\s+(?:!!|Boolean|row|rows|result)", c))
         )
     if language == "java":
         return (
             _rx(r"\.executeQuery\s*\([^;]+\)\.next\s*\(\s*\)", c)
             or _rx(r"return\s+\w+\.next\s*\(\s*\)", c)
-            or (_rx(r"\b(?:login|permission|token|session|isAdmin|allowed|valid)\b", c) and _rx(r"\.next\s*\(\s*\)", c))
+            or (_rx(r"\b(?:login|authenticate|permission|token|session|isAdmin|allowed|valid)\b", c) and _rx(r"\.next\s*\(\s*\)", c))
         )
     if language == "php":
         return (
             _rx(r"return\s*\(\s*bool\s*\)\s*\$?\w*->\s*query\s*\([^;]+\)->\s*fetch", c)
             or _rx(r"return\s*\$?\w*->\s*query\s*\([^;]+\)->\s*fetch(?:Column)?\s*\([^)]*\)\s*(?:>|!==|!=|==)", c)
+            or _rx(r"return\s*\$\w+\s*&&\s*\$\w+->\s*(?:num_rows|fetch_assoc\s*\(\s*\))\s*(?:>|!==|!=|==)", c)
+            or _rx(r"return\s*\$\w+->\s*num_rows\s*>\s*0", c)
+            or _rx(r"return\s*\$\w+\s*&&\s*\$\w+->fetch_assoc\s*\(\s*\)\s*!==\s*null", c)
             or _rx(r"return\s*\$\w+\s*\[[^\]]+\]\s*(?:>|<|==|!=|>=|<=)", c)
-            or (_rx(r"(?:num_rows|fetch\s*\(|fetch_assoc\s*\(|mysqli_fetch_assoc\s*\(|fetchColumn\s*\()", c) and _rx(r"\b(?:login|permission|feature|token|session|allowed|valid|canEdit|enabled|registered)\b", c))
+            or (_rx(r"(?:num_rows|fetch\s*\(|fetch_assoc\s*\(|mysqli_fetch_assoc\s*\(|fetchColumn\s*\()", c) and _rx(r"\b(?:login|authenticate|permission|feature|token|session|allowed|valid|canDelete|canAccess|canEdit|enabled|registered)\b", c))
         )
     return False
 
 
 def _raw_php_danger(code: str) -> bool:
     c = _strip_comments(code, "php")
-    # Preserve exact allowlist identifier pattern: $safeCol comes from $allowed
-    # map and is used only as an ORDER BY identifier.
     if _rx(r"\$allowed\s*=\s*\[", c) and _rx(r"\$safe\w+\s*=\s*\$allowed\s*\[", c) and _rx(r"ORDER\s+BY\s*\"\s*\.\s*\$safe", c):
         return False
-    # PHP double-quoted SQL with $var interpolation, PDO/mysqli query/raw exec,
-    # or raw implode(ids) used inside IN (...).
     return (
         _rx(r"->\s*query\s*\(\s*\"[^\"]*(?:SELECT|UPDATE|DELETE|INSERT)[^\"]*\$\w+", c)
         or _rx(r"mysqli_query\s*\([^,]+,\s*\"[^\"]*\$\w+", c)
@@ -231,23 +312,30 @@ def _raw_php_danger(code: str) -> bool:
 def _apply_raw_evidence_override(raw_code: str, language: str, label: str, attack_type: str, score: float, source: str, all_signals: set[str]) -> tuple[str, str, float, str, set[str]]:
     """Final evidence-aware correction layer. Conservative and source/sink based."""
     signals = set(all_signals)
-    # Strong safe overrides first, but only if there is no second-order/stored SQL evidence.
-    if _raw_safe_sqlite_param_js(raw_code) and not _raw_second_order_stored_sql(raw_code, language):
+    # Source provenance wins over boolean sink. Stored/config/DB SQL syntax is SECOND_ORDER even if a result is checked.
+    if _raw_second_order_stored_sql(raw_code, language):
+        signals.add("SECOND_ORDER_FLOW")
+        return "VULNERABLE", "SECOND_ORDER", max(score, 0.90), "raw_second_order_flow", signals
+
+    # DB-loaded scalar values are safe when they are only passed as bound parameters.
+    if _raw_safe_db_loaded_as_bound_param(raw_code, language):
+        signals.add("SAFE_EXEC")
+        return "SAFE", "NONE", min(score, 0.08), "raw_safe_db_loaded_bound_param", signals
+
+    # Strong safe overrides: tied to an executed sink, and only when no stored SQL execution evidence exists.
+    if _raw_safe_sqlite_param_js(raw_code):
         danger = signals & {"SQL_CONCAT", "FSTRING_SQL", "FSTRING_SQL_RAW", "UNSAFE_EXEC", "SECOND_ORDER_FLOW"}
         if not danger:
             signals.add("SAFE_EXEC")
             return "SAFE", "NONE", min(score, 0.08), "raw_safe_sqlite_params", signals
-    if _raw_safe_numeric_limit_offset(raw_code, language) and not _raw_second_order_stored_sql(raw_code, language):
-        # Safe only for narrow numeric LIMIT/OFFSET construction.  Other raw SQL
-        # identifier/table/order dynamics are not suppressed by this check.
+    if _raw_safe_query_builder(raw_code, language):
+        signals.add("SAFE_EXEC")
+        return "SAFE", "NONE", min(score, 0.08), "raw_safe_query_builder", signals
+    if _raw_safe_numeric_limit_offset(raw_code, language):
         signals.add("SAFE_NUMERIC_VAR")
         return "SAFE", "NONE", min(score, 0.08), "raw_safe_numeric_limit_offset", signals
 
-    # Strong dangerous evidence.  Second-order wins over blind/in-band because
-    # the source provenance is stored/config/DB-loaded SQL syntax.
-    if _raw_second_order_stored_sql(raw_code, language):
-        signals.add("SECOND_ORDER_FLOW")
-        return "VULNERABLE", "SECOND_ORDER", max(score, 0.90), "raw_second_order_flow", signals
+    # Dangerous PHP raw SQL, with BLIND type when the raw query controls a boolean/security decision.
     if language == "php" and _raw_php_danger(raw_code):
         signals.add("SQL_CONCAT")
         if _raw_blind_boolean_sink(raw_code, language):

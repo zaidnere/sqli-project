@@ -23,13 +23,13 @@
 | 15 | `javascript/015_BLIND_vuln_count_bool_js.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
 | 16 | `javascript/016_NONE_safe_count_bool_js.js` | SAFE / NONE | SAFE / NONE |  | ✅ |
 | 17 | `java/017_BLIND_vuln_resultset_next.java` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
-| 18 | `java/018_NONE_safe_resultset_next_prepared.java` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
+| 18 | `java/018_NONE_safe_resultset_next_prepared.java` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
 | 19 | `php/019_BLIND_vuln_count_bool_php.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
 | 20 | `php/020_NONE_safe_count_bool_php.php` | SAFE / NONE | SAFE / NONE |  | ✅ |
 | 21 | `javascript/021_SECOND_ORDER_vuln_cached_fragment_js.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
 | 22 | `javascript/022_NONE_safe_db_value_param_js.js` | SAFE / NONE | SAFE / NONE |  | ✅ |
 | 23 | `java/023_SECOND_ORDER_vuln_resultset_getstring.java` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
-| 24 | `java/024_NONE_safe_resultset_param_reuse.java` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
+| 24 | `java/024_NONE_safe_resultset_param_reuse.java` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
 | 25 | `php/025_SECOND_ORDER_vuln_fetch_assoc_reuse.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
 | 26 | `php/026_NONE_safe_fetch_assoc_param_reuse.php` | SAFE / NONE | SAFE / NONE |  | ✅ |
 | 27 | `javascript/027_NONE_safe_set_has_order_by_js.js` | SAFE / NONE | SAFE / NONE | 0.0034 | ✅ |
