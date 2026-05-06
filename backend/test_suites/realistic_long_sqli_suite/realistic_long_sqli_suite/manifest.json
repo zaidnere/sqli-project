@@ -1,0 +1,146 @@
+[
+  {
+    "file": "python/001_SAFE_flask_inventory_repository.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "python",
+    "category": "realistic_safe",
+    "notes": "Realistic Flask-style inventory repository: params, whitelist sort, placeholder IN list, numeric paging."
+  },
+  {
+    "file": "python/002_IN_BAND_flask_customer_search_vulnerable.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "python",
+    "category": "realistic_in_band",
+    "notes": "Mixed parameterization: tenant/status are safe, keyword clause is concatenated."
+  },
+  {
+    "file": "python/003_BLIND_flask_permission_check.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "language": "python",
+    "category": "realistic_blind",
+    "notes": "Unsafe SQL controls an authorization boolean decision."
+  },
+  {
+    "file": "python/004_SECOND_ORDER_saved_report_runner.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "language": "python",
+    "category": "realistic_second_order",
+    "notes": "Stored report filter is safely fetched, then reused as SQL text."
+  },
+  {
+    "file": "python/005_SAFE_analytics_dashboard_complex.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "python",
+    "category": "realistic_safe",
+    "notes": "Complex analytics dashboard query with parameter binding, numeric paging, and whitelist metric column."
+  },
+  {
+    "file": "javascript/006_SAFE_express_orders_repository.js",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "javascript",
+    "category": "realistic_safe",
+    "notes": "Express-style order repository with params, whitelist sort, placeholder list, and numeric limit."
+  },
+  {
+    "file": "javascript/007_IN_BAND_express_template_where_vuln.js",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "javascript",
+    "category": "realistic_in_band",
+    "notes": "Template literal value injection inside WHERE."
+  },
+  {
+    "file": "javascript/008_BLIND_feature_flag_check_vuln.js",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "language": "javascript",
+    "category": "realistic_blind",
+    "notes": "Unsafe SQL controls boolean feature flag decision."
+  },
+  {
+    "file": "javascript/009_SECOND_ORDER_saved_segment_runner.js",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "language": "javascript",
+    "category": "realistic_second_order",
+    "notes": "DB-loaded segment clause is concatenated into later query."
+  },
+  {
+    "file": "javascript/010_SAFE_reports_query_builder.js",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "javascript",
+    "category": "realistic_safe",
+    "notes": "Realistic query builder: whitelist report name, placeholders list, params, safe numeric page."
+  },
+  {
+    "file": "java/011_SAFE_SpringOrderRepository.java",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "java",
+    "category": "realistic_safe",
+    "notes": "Spring/JDBC style repository using PreparedStatement and Set.contains allowlist."
+  },
+  {
+    "file": "java/012_IN_BAND_legacyStatementSearch.java",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "java",
+    "category": "realistic_in_band",
+    "notes": "Legacy Statement concat hidden in a service/repository style class."
+  },
+  {
+    "file": "java/013_BLIND_LoginServiceStatement.java",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "language": "java",
+    "category": "realistic_blind",
+    "notes": "Unsafe Statement SQL controls return rs.next()."
+  },
+  {
+    "file": "java/014_SECOND_ORDER_AuditArchiveService.java",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "language": "java",
+    "category": "realistic_second_order",
+    "notes": "Prepared select loads DB value, later Statement concatenates it into INSERT."
+  },
+  {
+    "file": "php/015_SAFE_PdoInventoryRepository.php",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "php",
+    "category": "realistic_safe",
+    "notes": "PDO prepared statements, allowlist order column, safe paging."
+  },
+  {
+    "file": "php/016_IN_BAND_mysqli_customer_search.php",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "php",
+    "category": "realistic_in_band",
+    "notes": "mysqli query with string concatenated keyword and status."
+  },
+  {
+    "file": "php/017_BLIND_FeatureFlagService.php",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "language": "php",
+    "category": "realistic_blind",
+    "notes": "Unsafe SQL controls return count > 0."
+  },
+  {
+    "file": "php/018_SECOND_ORDER_ProfileAudit.php",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "language": "php",
+    "category": "realistic_second_order",
+    "notes": "Prepared read from DB, then fetched value concatenated into later SQL."
+  }
+]

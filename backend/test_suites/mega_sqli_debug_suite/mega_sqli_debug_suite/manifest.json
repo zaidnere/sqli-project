@@ -1,0 +1,322 @@
+[
+  {
+    "file": "python/001_NONE_safe_direct_whitelist_order_by.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "py",
+    "category": "whitelist_safe",
+    "notes": "Direct allowlist ORDER BY."
+  },
+  {
+    "file": "python/002_IN_BAND_vuln_raw_order_by.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "py",
+    "category": "dynamic_identifier_vuln",
+    "notes": "Raw ORDER BY identifiers without allowlist."
+  },
+  {
+    "file": "python/003_IN_BAND_vuln_whitelist_computed_but_unused.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "py",
+    "category": "whitelist_bypass",
+    "notes": "Whitelist variable is computed, but raw variable is used in SQL."
+  },
+  {
+    "file": "python/004_NONE_safe_placeholder_list_in.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "py",
+    "category": "placeholder_list_safe",
+    "notes": "IN list built from '?' placeholders and values passed separately."
+  },
+  {
+    "file": "python/005_IN_BAND_vuln_joined_in_list.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "py",
+    "category": "joined_ids_vuln",
+    "notes": "IN list built by joining raw strings."
+  },
+  {
+    "file": "python/006_NONE_safe_limit_offset_int_bounds.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "py",
+    "category": "numeric_safe",
+    "notes": "LIMIT/OFFSET after int conversion and bounds."
+  },
+  {
+    "file": "python/007_IN_BAND_vuln_raw_limit_offset.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "py",
+    "category": "numeric_vuln",
+    "notes": "Raw LIMIT/OFFSET strings inserted into SQL."
+  },
+  {
+    "file": "python/008_BLIND_vuln_count_gt_zero.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "language": "py",
+    "category": "blind_count",
+    "notes": "Unsafe query controls COUNT > 0 boolean result."
+  },
+  {
+    "file": "python/009_BLIND_vuln_fetchone_helper_bool.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "language": "py",
+    "category": "blind_helper",
+    "notes": "Unsafe query controls boolean helper result."
+  },
+  {
+    "file": "python/010_NONE_safe_parameterized_boolean.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "py",
+    "category": "blind_safe",
+    "notes": "Boolean decision, but query is parameterized."
+  },
+  {
+    "file": "python/011_SECOND_ORDER_vuln_db_value_reuse.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "language": "py",
+    "category": "second_order",
+    "notes": "DB-loaded value reused unsafely in later SQL."
+  },
+  {
+    "file": "python/012_SECOND_ORDER_vuln_cached_fragment.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "language": "py",
+    "category": "second_order_fragment",
+    "notes": "Stored SQL fragment fetched from DB and reused."
+  },
+  {
+    "file": "python/013_NONE_safe_db_value_parameterized.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "py",
+    "category": "second_order_safe",
+    "notes": "DB-loaded value reused through parameter binding."
+  },
+  {
+    "file": "python/014_NONE_safe_static_executescript.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "py",
+    "category": "static_ddl",
+    "notes": "Static DDL script only."
+  },
+  {
+    "file": "python/015_IN_BAND_vuln_executescript_fstring.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "py",
+    "category": "executescript_vuln",
+    "notes": "executescript with f-string value injection."
+  },
+  {
+    "file": "python/016_IN_BAND_vuln_replace_sanitized_like.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "py",
+    "category": "fake_sanitization",
+    "notes": "replace() is not a strict whitelist."
+  },
+  {
+    "file": "python/017_NONE_safe_enum_parameterized.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "py",
+    "category": "enum_safe",
+    "notes": "Enum/allowlist value is still sent as parameter."
+  },
+  {
+    "file": "python/018_IN_BAND_vuln_alias_to_execute.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "py",
+    "category": "alias_flow",
+    "notes": "Unsafe query string flows through aliases before execute."
+  },
+  {
+    "file": "python/019_NONE_safe_dict_map_table.py",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "py",
+    "category": "dict_whitelist",
+    "notes": "Dictionary map allowlist for table name."
+  },
+  {
+    "file": "python/020_IN_BAND_vuln_dynamic_table_raw.py",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "py",
+    "category": "dynamic_table_vuln",
+    "notes": "Raw table name inserted into SQL."
+  },
+  {
+    "file": "javascript/021_IN_BAND_vuln_template_where.js",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "js",
+    "category": "js_template_vuln",
+    "notes": "Template literal value injection."
+  },
+  {
+    "file": "javascript/022_NONE_safe_parameterized_query.js",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "js",
+    "category": "js_parameterized_safe",
+    "notes": "Parameterized query."
+  },
+  {
+    "file": "javascript/023_BLIND_vuln_boolean_count.js",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "language": "js",
+    "category": "js_blind",
+    "notes": "Unsafe SQL controls count > 0 boolean."
+  },
+  {
+    "file": "javascript/024_SECOND_ORDER_vuln_cached_fragment.js",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "language": "js",
+    "category": "js_second_order",
+    "notes": "Stored fragment loaded then reused."
+  },
+  {
+    "file": "javascript/025_NONE_safe_whitelist_order_by.js",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "js",
+    "category": "js_whitelist_safe",
+    "notes": "Allowlisted ORDER BY."
+  },
+  {
+    "file": "javascript/026_IN_BAND_vuln_raw_order_by.js",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "js",
+    "category": "js_order_by_vuln",
+    "notes": "Raw ORDER BY variables."
+  },
+  {
+    "file": "javascript/027_NONE_safe_placeholder_in_list.js",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "js",
+    "category": "js_placeholder_list_safe",
+    "notes": "IN list with placeholders."
+  },
+  {
+    "file": "javascript/028_IN_BAND_vuln_joined_ids.js",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "js",
+    "category": "js_joined_ids_vuln",
+    "notes": "IN list with raw joined values."
+  },
+  {
+    "file": "java/029_IN_BAND_vuln_statement_concat.java",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "java",
+    "category": "java_statement_vuln",
+    "notes": "Statement + string concat."
+  },
+  {
+    "file": "java/030_NONE_safe_prepared_statement.java",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "java",
+    "category": "java_prepared_safe",
+    "notes": "PreparedStatement with bind variable."
+  },
+  {
+    "file": "java/031_BLIND_vuln_boolean_login.java",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "language": "java",
+    "category": "java_blind",
+    "notes": "Unsafe SQL controls boolean login."
+  },
+  {
+    "file": "java/032_SECOND_ORDER_vuln_stored_note.java",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "language": "java",
+    "category": "java_second_order",
+    "notes": "DB value read then reused unsafely."
+  },
+  {
+    "file": "java/033_NONE_safe_whitelist_order_by.java",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "java",
+    "category": "java_whitelist_order_by",
+    "notes": "Allowlisted ORDER BY."
+  },
+  {
+    "file": "java/034_IN_BAND_vuln_raw_order_by.java",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "java",
+    "category": "java_raw_order_by",
+    "notes": "Raw ORDER BY."
+  },
+  {
+    "file": "php/035_IN_BAND_vuln_mysqli_concat.php",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "php",
+    "category": "php_concat_vuln",
+    "notes": "mysqli query string concat."
+  },
+  {
+    "file": "php/036_NONE_safe_prepared_stmt.php",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "php",
+    "category": "php_prepared_safe",
+    "notes": "Prepared statement."
+  },
+  {
+    "file": "php/037_BLIND_vuln_count_bool.php",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "BLIND",
+    "language": "php",
+    "category": "php_blind",
+    "notes": "Unsafe SQL controls boolean count."
+  },
+  {
+    "file": "php/038_SECOND_ORDER_vuln_db_reuse.php",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "SECOND_ORDER",
+    "language": "php",
+    "category": "php_second_order",
+    "notes": "DB-loaded value reused unsafely."
+  },
+  {
+    "file": "php/039_NONE_safe_whitelist_order_by.php",
+    "expected_verdict": "SAFE",
+    "expected_type": "NONE",
+    "language": "php",
+    "category": "php_whitelist_order_by",
+    "notes": "Allowlisted ORDER BY."
+  },
+  {
+    "file": "php/040_IN_BAND_vuln_raw_order_by.php",
+    "expected_verdict": "VULNERABLE",
+    "expected_type": "IN_BAND",
+    "language": "php",
+    "category": "php_raw_order_by",
+    "notes": "Raw ORDER BY."
+  }
+]

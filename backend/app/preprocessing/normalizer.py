@@ -73,6 +73,18 @@ def _has_interpolation(token: str) -> bool:
     return is_template_literal(token) and "${" in token
 
 
+def _has_php_dollar_interpolation(token: str) -> bool:
+    """True for PHP-style double quoted strings containing $var / ${var}.
+
+    PHP expands variables inside double quoted strings. For SQL strings this is
+    equivalent to a JavaScript template literal or Python f-string from an SQLi
+    perspective. Single-quoted PHP strings are not interpolated.
+    """
+    if not (len(token) >= 2 and token[0] == '"' and token[-1] == '"'):
+        return False
+    return re.search(r"(?<!\\)\$(?:\{\s*)?[A-Za-z_][A-Za-z0-9_]*", token[1:-1]) is not None
+
+
 def is_fstring(token: str) -> bool:
     """
     True for f-string tokens — Python f-strings (f"..." / f'...') OR
@@ -81,6 +93,8 @@ def is_fstring(token: str) -> bool:
     if len(token) >= 3 and token[0].lower() == 'f' and token[1] in ('"', "'"):
         return True
     if _has_interpolation(token):
+        return True
+    if _has_php_dollar_interpolation(token):
         return True
     return False
 
@@ -114,6 +128,8 @@ def is_sql_string(token: str) -> bool:
     """Plain string literal that contains SQL. Includes template literals
     that do NOT have ${...} interpolation (treated as plain SQL strings)."""
     if is_string_literal(token):
+        if _has_php_dollar_interpolation(token):
+            return False
         return _contains_sql(token[1:-1])
     if is_template_literal(token) and not _has_interpolation(token):
         return _contains_sql(token[1:-1])
@@ -130,6 +146,9 @@ def is_fstring_sql(token: str) -> bool:
         return _contains_sql(body[1:-1])
     # JavaScript template literal with interpolation
     if _has_interpolation(token):
+        return _contains_sql(token[1:-1])
+    # PHP double quoted SQL string with $var interpolation
+    if _has_php_dollar_interpolation(token):
         return _contains_sql(token[1:-1])
     return False
 
@@ -163,6 +182,10 @@ def _extract_interpolated_vars(token: str) -> set[str]:
     if _has_interpolation(token):
         inner = token[1:-1]
         return {m.group(1) for m in _JS_INTERP_VAR_RE.finditer(inner + "}")}
+    # PHP double quoted body with $var / ${var}
+    if _has_php_dollar_interpolation(token):
+        inner = token[1:-1]
+        return {m.group(1) for m in re.finditer(r"(?<!\\)\$(?:\{\s*)?([A-Za-z_][A-Za-z0-9_]*)", inner)}
     return set()
 
 
@@ -248,10 +271,14 @@ def _classify_execute_call(tokens: list[str], exec_idx: int, safe_single_arg_var
     # Tokenizer removes `$`, so this appears as `stmt -> execute ( params )`.
     # A single array argument here is the bound parameter list, not a raw SQL
     # query string. Keep Python `cursor.execute(sql)` unsafe; only apply this
-    # when the receiver name is statement-like.
+    # when the receiver name is statement-like, or when execute() receives an
+    # array literal (PDO params) on a non-connection receiver.
     receiver = tokens[exec_idx - 2].lower() if exec_idx >= 2 and tokens[exec_idx - 1] in ('.', '->') else ''
     if tokens[exec_idx] == 'execute' and receiver in {'stmt', 'statement', 'ps', 'preparedstatement', 'prepared'}:
         return 'SAFE_EXEC'
+    if tokens[exec_idx] == 'execute' and receiver and receiver not in {'conn', 'connection', 'db', 'database', 'cursor', 'cur', 'pdo'}:
+        if arg1_tokens and arg1_tokens[0] == '[':
+            return 'SAFE_EXEC'
 
     # Single arg — check whether it's a literal-only string (static SQL).
     # Tokens in arg1_tokens (excluding outer paren). If all tokens are
@@ -846,6 +873,8 @@ def _detect_safe_placeholder_list(tokens: list[str], eq_idx: int) -> bool:
         if t == "join":
             if i > 0 and tokens[i - 1] == "." and i + 1 < n and tokens[i + 1] == "(":
                 has_join = True
+        if t == "implode" and i + 1 < n and tokens[i + 1] == "(":
+            has_join = True
         if t in ('"?"', "'?'"):
             has_qmark = True
         i += 1
@@ -974,6 +1003,7 @@ _DB_FETCH_AMBIGUOUS = {"all", "get", "query", "queryOne"}
 _DB_LIKE_NAMES = {
     "db", "conn", "connection", "client", "pool",
     "database", "sql", "knex", "pg", "mysql", "sqlite", "cur", "cursor",
+    "pdo", "mysqli", "stmt", "statement",
 }
 
 # PHP global functions that load DB rows (no `.` receiver).
@@ -1118,6 +1148,42 @@ def _detect_db_loaded_assignment(tokens: list[str], eq_idx: int) -> bool:
     return False
 
 
+def _rhs_uses_db_loaded_var(tokens: list[str], eq_idx: int, db_loaded_vars: set[str]) -> bool:
+    """Detect taint propagation: x = row[0] / x = row.field / x = helper(row)."""
+    if not db_loaded_vars:
+        return False
+    n = len(tokens)
+    depth = 0
+    i = eq_idx + 1
+    stmt_boundary_kw = {
+        "def", "class", "return", "if", "elif", "else", "for", "while",
+        "try", "except", "finally", "with", "import", "from", "raise",
+        "yield", "pass", "break", "continue",
+    }
+    while i < n:
+        t = tokens[i]
+        if t in ("(", "[", "{"):
+            depth += 1
+        elif t in (")", "]", "}"):
+            depth -= 1
+            if depth < 0:
+                break
+        if depth == 0:
+            if t in (";", "\n"):
+                break
+            if i > eq_idx + 1 and t == "=":
+                prev_t = tokens[i - 1] if i - 1 >= 0 else None
+                next_t = tokens[i + 1] if i + 1 < n else None
+                if prev_t not in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^") and next_t != "=":
+                    break
+            if i > eq_idx + 1 and t in stmt_boundary_kw:
+                break
+        if t in db_loaded_vars:
+            return True
+        i += 1
+    return False
+
+
 # ── Safe-pattern detectors (Mega Suite groups 2 + 3) ──────────────────────
 
 # Numeric coercion functions whose output is bounded numeric.
@@ -1173,7 +1239,7 @@ def _detect_safe_placeholder_list(tokens: list[str], eq_idx: int) -> bool:
         elif t in (")", "]", "}"):
             depth -= 1
             if depth < 0: break
-        if t == "join":
+        if t == "join" or t == "implode":
             has_join = True
         # String literals — must contain ONLY ?, comma, space, or be empty
         if (len(t) >= 2 and t[0] in '"\'`' and t[-1] in '"\'`'):
@@ -1437,17 +1503,141 @@ def _validate_safe_sql_fragment_mutations(
 
 
 def _detect_second_order_flow(tokens: list[str], db_loaded_var_pos: dict[str, int]) -> bool:
-    """Detect DB-loaded value reused later as SQL text.
+    """Detect DB-loaded value reused later as SQL text/syntax.
 
-    This fixes the important distinction between:
-      - rows = cur.fetchall() after executing a query (result, not source), and
-      - report = load_from_db(); sql = "..." + report.where_clause (source for
-        a later query).  We require the DB-loaded variable to appear *after* it
-    was loaded and near SQL text / string-concat or inside an SQL f-string.
+    Second-order is not "any DB value". It specifically means a stored value
+    becomes SQL syntax later: concatenated into SQL, interpolated into SQL, or
+    passed as the SQL string to execute/query/executescript/executeQuery.
     """
+    n = len(tokens)
+    db_loaded_names = set(db_loaded_var_pos)
+
+    exec_names = {
+        "execute", "executescript", "executemany",
+        "query", "raw", "run", "all", "get", "each",
+        "executeQuery", "executeUpdate",
+        "mysqli_query", "pg_query", "sqlsrv_query",
+    }
+
+    def _first_arg_indices(open_paren_idx: int) -> list[int]:
+        depth = 1
+        out: list[int] = []
+        j = open_paren_idx + 1
+        while j < n and depth > 0:
+            tj = tokens[j]
+            if tj in ("(", "[", "{"):
+                depth += 1
+            elif tj in (")", "]", "}"):
+                depth -= 1
+                if depth == 0:
+                    break
+            elif tj == "," and depth == 1:
+                break
+            out.append(j)
+            j += 1
+        return out
+
+    def _is_exec_call(i: int) -> bool:
+        if i >= n or tokens[i] not in exec_names:
+            return False
+        if i + 1 >= n or tokens[i + 1] != "(":
+            return False
+        if tokens[i] in {"all", "get", "run", "each", "query"}:
+            if i >= 2 and tokens[i - 1] in (".", "->"):
+                recv = tokens[i - 2].lower()
+                return recv in _DB_LIKE_NAMES or recv in {"stmt", "statement"}
+            return tokens[i] in {"mysqli_query", "pg_query", "sqlsrv_query"}
+        return True
+
+    # Cache/container taint: DB-loaded fragments stored into cache/map/array and
+    # later retrieved into SQL construction: cache.set(... row.fragment),
+    # cache.put(... rs.getString(...)), _CACHE[key] = row[0] then SQL + cache.get/key.
+    tainted_containers: set[str] = set()
+    db_vars = set(db_loaded_names)
+    for i, t in enumerate(tokens):
+        # Track variables assigned directly from DB fetch in this full-file scan.
+        if t == "=":
+            lhs_positions = _collect_lhs_positions(tokens, i)
+            if _detect_db_loaded_assignment(tokens, i) or _rhs_uses_db_loaded_var(tokens, i, db_vars):
+                for p in lhs_positions:
+                    db_vars.add(tokens[p])
+            # cache[key] = db_var / db fetch
+            if i >= 2 and tokens[i - 1] == "]":
+                j = i - 2
+                depth = 1
+                while j >= 0 and depth > 0:
+                    if tokens[j] == "]": depth += 1
+                    elif tokens[j] == "[": depth -= 1
+                    j -= 1
+                if j >= 0 and is_identifier(tokens[j]):
+                    rhs = _first_arg_indices(i)  # not perfect for '=', but scans RHS until comma/end reasonably
+                    # Use a bounded raw scan instead.
+                    k = i + 1
+                    while k < n and k < i + 25:
+                        if tokens[k] in (";", "return", "def", "function", "class"):
+                            break
+                        if tokens[k] in db_vars or _is_db_fetch_call(tokens, k):
+                            tainted_containers.add(tokens[j])
+                            break
+                        k += 1
+        # cache.set(name, dbvar) / cache.put(name, dbfetch)
+        if t in {"set", "put"} and i >= 2 and tokens[i - 1] in (".", "->") and is_identifier(tokens[i - 2]):
+            container = tokens[i - 2]
+            if i + 1 < n and tokens[i + 1] == "(":
+                depth = 1
+                j = i + 2
+                while j < n and depth > 0:
+                    tj = tokens[j]
+                    if tj in ("(", "[", "{"):
+                        depth += 1
+                    elif tj in (")", "]", "}"):
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    if tj in db_vars or _is_db_fetch_call(tokens, j):
+                        tainted_containers.add(container)
+                        break
+                    j += 1
+
+    if tainted_containers:
+        for i, t in enumerate(tokens):
+            if t not in tainted_containers:
+                continue
+            # Use through cache[key] or cache.get(key)
+            uses_container_value = False
+            if i + 1 < n and tokens[i + 1] == "[":
+                uses_container_value = True
+            if i + 3 < n and tokens[i + 1] in (".", "->") and tokens[i + 2] == "get" and tokens[i + 3] == "(":
+                uses_container_value = True
+            if not uses_container_value:
+                continue
+            lo = max(0, i - 12)
+            hi = min(n, i + 12)
+            window = tokens[lo:hi]
+            if any(is_sql_string(x) or is_fstring_sql(x) for x in window) and any(x in {"+", ".", "%"} for x in window):
+                return True
+
+    # A direct DB fetch used as the SQL argument is second-order:
+    #   executeQuery(rs.getString("sql_text"))
+    #   query($stmt->fetchColumn())
+    for i in range(n):
+        if not _is_exec_call(i):
+            continue
+        first_arg = _first_arg_indices(i + 1)
+        if not first_arg:
+            continue
+        # Prepared-statement parameter execution, e.g. $stmt->execute([$x]), is not a SQL-string sink.
+        if tokens[i] == "execute" and first_arg and tokens[first_arg[0]] in {"[", "("}:
+            continue
+        for p in first_arg:
+            if _is_db_fetch_call(tokens, p):
+                return True
+            if tokens[p] in db_loaded_names:
+                return True
+
     if not db_loaded_var_pos:
         return False
-    n = len(tokens)
+
     for name, load_pos in db_loaded_var_pos.items():
         for i in range(load_pos + 1, n):
             t = tokens[i]
@@ -1455,45 +1645,40 @@ def _detect_second_order_flow(tokens: list[str], db_loaded_var_pos: dict[str, in
                 return True
             if t != name:
                 continue
-            lo = max(load_pos + 1, i - 25)
-            hi = min(n, i + 25)
+            lo = max(load_pos + 1, i - 8)
+            hi = min(n, i + 8)
             window = tokens[lo:hi]
             has_sql_text = any(is_sql_string(x) or is_fstring_sql(x) for x in window)
-            has_concat = any(x in {"+", ".", "%"} for x in window)
-            if has_sql_text and has_concat:
+            prev_t = tokens[i - 1] if i > 0 else ""
+            next_t = tokens[i + 1] if i + 1 < n else ""
+            adjacent_concat = prev_t in {"+", "%"} or next_t in {"+", "%"}
+            php_dot_concat = prev_t == "." or next_t == "."
+            nearby_concat = any(x in {"+", "%"} for x in window)
+            if has_sql_text and (adjacent_concat or (php_dot_concat and nearby_concat)):
                 return True
     return False
 
-
 def _detect_boolean_sink(tokens: list[str]) -> bool:
-    """
-    Detect a function whose return statement reduces a fetch result to a bool.
+    """Detect query-result reduced to a boolean decision.
 
-    Patterns recognised (any one suffices):
-      return cur.fetchone() is not None
-      return cur.fetchone() is None
-      return cur.fetchone()[0] > 0
-      return cur.fetchone()[0] >= 1
-      return cur.fetchone()[0] == <value>
-      return bool(cur.fetchone())
-      result = cur.fetchone()[0] > 0; return result
-      flag = cur.fetchone() is not None; return flag
-
-    Strict: requires `return`/`bool(...)` AND a fetch call AND a bool op
-    in the SAME logical statement (bounded by next `=` assignment or
-    statement keyword).
+    Covers direct and indirect patterns across Python/JS/Java/PHP:
+      - return cur.fetchone() is not None / count > 0
+      - row = await db.get(sql); return !!row / Boolean(row)
+      - return executeQuery(sql).next()
+      - return (bool)$pdo->query($sql)->fetch()
     """
     n = len(tokens)
     bool_ops = {"==", "!=", ">", "<", ">=", "<=", "is"}
+    bool_funcs = {"bool", "Boolean"}
     stmt_boundary_kw = {
         "def", "class", "return", "if", "elif", "else", "for", "while",
         "try", "except", "finally", "with", "import", "from", "raise",
         "yield", "pass", "break", "continue",
     }
 
-    def _scan_stmt(start_idx: int):
-        """Yield indices of tokens belonging to one statement."""
+    def _scan_stmt(start_idx: int) -> list[int]:
         depth = 0
+        out: list[int] = []
         i = start_idx
         while i < n:
             t = tokens[i]
@@ -1513,20 +1698,44 @@ def _detect_boolean_sink(tokens: list[str]) -> bool:
                         break
                 if i > start_idx and t in stmt_boundary_kw:
                     break
-            yield i
+            out.append(i)
             i += 1
+        return out
 
-    # Pre-pass: find vars assigned `<fetch> ... <bool_op>` in same stmt.
+    def _stmt_has_fetch(indices: list[int]) -> bool:
+        for j in indices:
+            if _is_db_fetch_call(tokens, j):
+                return True
+            if _is_db_bool_call(tokens, j):
+                return True
+            # Chained JDBC: executeQuery(sql).next(), where receiver before
+            # next() is ')' rather than a named ResultSet var.
+            if tokens[j] == "next" and j + 1 < n and tokens[j + 1] == "(":
+                if any(tokens[k] == "executeQuery" for k in indices[:indices.index(j)]):
+                    return True
+        return False
+
+    def _stmt_has_bool_context(indices: list[int]) -> bool:
+        for pos, j in enumerate(indices):
+            if tokens[j] in bool_ops or tokens[j] in bool_funcs or tokens[j] == "!":
+                return True
+            if _is_db_bool_call(tokens, j):
+                return True
+            if tokens[j] == "next" and j + 1 < n and tokens[j + 1] == "(":
+                if any(tokens[k] == "executeQuery" for k in indices[:pos]):
+                    return True
+        return False
+
     bool_fetch_vars: set[str] = set()
     db_fetched_vars: set[str] = set()
+
+    # Pre-pass: assignment facts.
     for idx in range(n):
         if tokens[idx] != "=":
             continue
         prev = tokens[idx - 1] if idx > 0 else None
-        nxt  = tokens[idx + 1] if idx + 1 < n else None
-        if prev in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^"):
-            continue
-        if nxt == "=":
+        nxt = tokens[idx + 1] if idx + 1 < n else None
+        if prev in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^") or nxt == "=":
             continue
         k = idx - 1
         while k >= 0 and tokens[k] in (",", "(", ")"):
@@ -1534,72 +1743,38 @@ def _detect_boolean_sink(tokens: list[str]) -> bool:
         if k < 0 or not is_identifier(tokens[k]):
             continue
         lhs = tokens[k]
-        has_fetch = False
-        has_bool = False
-        uses_fetched_var = False
-        for j in _scan_stmt(idx + 1):
-            tj = tokens[j]
-            if _is_db_fetch_call(tokens, j):
-                has_fetch = True
-            # rs.next() — Java JDBC boolean check, treat as fetch+bool
-            if _is_db_bool_call(tokens, j):
-                has_fetch = True
-                has_bool = True
-            if tj in bool_ops:
-                has_bool = True
-            if tj == "bool" and j + 1 < n and tokens[j + 1] == "(":
-                has_bool = True
-            # `allowed = result_count > 0` — RHS uses a known fetched var
-            if tj in db_fetched_vars:
-                uses_fetched_var = True
-        if has_fetch and has_bool:
-            bool_fetch_vars.add(lhs)
-        elif uses_fetched_var and has_bool:
-            # Indirect bool sink: var assigned bool-op of a previously
-            # DB-loaded var. `return <lhs>` then qualifies as boolean sink.
+        stmt = _scan_stmt(idx + 1)
+        has_fetch = _stmt_has_fetch(stmt)
+        has_bool = _stmt_has_bool_context(stmt)
+        uses_db_var = any(tokens[j] in db_fetched_vars for j in stmt)
+        if (has_fetch and has_bool) or (uses_db_var and has_bool):
             bool_fetch_vars.add(lhs)
         elif has_fetch:
             db_fetched_vars.add(lhs)
 
-    # Main scan: `return <expr>` where expr is bool-of-fetch.
+    # Main scan: return statements.
     for i, t in enumerate(tokens):
         if t != "return":
             continue
-        has_fetch = False
-        has_bool_op = False
-        has_fetched_var = False
-        for j in _scan_stmt(i + 1):
-            tj = tokens[j]
-            if _is_db_fetch_call(tokens, j):
-                has_fetch = True
-            # `return rs.next()` — bool-returning DB call
-            if _is_db_bool_call(tokens, j):
-                return True
-            if tj in bool_ops:
-                has_bool_op = True
-            # `return <pre-stored bool>` — direct
-            if tj in bool_fetch_vars:
-                return True
-            # `return <var-holding-fetch> <bool_op> ...` qualifies
-            if tj in db_fetched_vars:
-                has_fetched_var = True
-            if tj == "bool" and j + 1 < n and tokens[j + 1] == "(":
-                k = j + 2
-                local_depth = 1
-                while k < n and local_depth > 0:
-                    if tokens[k] in ("(", "[", "{"):
-                        local_depth += 1
-                    elif tokens[k] in (")", "]", "}"):
-                        local_depth -= 1
-                    if _is_db_fetch_call(tokens, k):
-                        return True
-                    if tokens[k] in db_fetched_vars:
-                        return True
-                    k += 1
-        if has_fetch and has_bool_op:
+        stmt = _scan_stmt(i + 1)
+        if not stmt:
+            continue
+        if _stmt_has_fetch(stmt) and _stmt_has_bool_context(stmt):
             return True
-        if has_fetched_var and has_bool_op:
+        if any(tokens[j] in bool_fetch_vars for j in stmt):
             return True
+        has_db_var = any(tokens[j] in db_fetched_vars for j in stmt)
+        if has_db_var and _stmt_has_bool_context(stmt):
+            return True
+        # Direct boolean-returning DB existence call without explicit op:
+        #   return c.createStatement().executeQuery(sql).next()
+        #   return rs.next()
+        if any(_is_db_bool_call(tokens, j) for j in stmt):
+            return True
+        for j in stmt:
+            if tokens[j] == "next" and j + 1 < n and tokens[j + 1] == "(":
+                if any(tokens[k] == "executeQuery" for k in stmt if k < j):
+                    return True
     return False
 
 
@@ -1838,12 +2013,12 @@ def normalize_tokens(
         signal = None
         if _detect_safe_placeholder_list(tokens, idx):
             signal = "SAFE_PLACEHOLDER_LIST"
-        elif _detect_safe_sql_fragment_list_assignment(tokens, idx):
-            signal = "SAFE_SQL_FRAGMENT_LIST"
         elif _detect_whitelist_assignment(tokens, idx):
             signal = "WHITELIST_VAR"
-        elif _detect_db_loaded_assignment(tokens, idx):
+        elif _detect_db_loaded_assignment(tokens, idx) or _rhs_uses_db_loaded_var(tokens, idx, db_loaded_vars):
             signal = "DB_LOADED_VAR"
+        elif _detect_safe_sql_fragment_list_assignment(tokens, idx):
+            signal = "SAFE_SQL_FRAGMENT_LIST"
         elif _detect_static_sql_assignment(tokens, idx):
             signal = "STATIC_SQL_VAR"
         elif _detect_safe_numeric_assignment(tokens, idx, safe_numeric_vars):
@@ -2029,7 +2204,7 @@ def normalize_tokens(
                         if receiver in {
                             "db", "conn", "connection", "client", "pool",
                             "database", "sql", "knex", "pg", "mysql",
-                            "sqlite", "cur", "cursor", "stmt",
+                            "sqlite", "cur", "cursor", "stmt", "pdo", "mysqli",
                         }:
                             should_classify = True
                     # await within 4 tokens behind
@@ -2150,9 +2325,43 @@ def normalize_tokens(
                 elif not _is_safe_var(i + 2):
                     _append_concat_signal(i + 2)
 
-            # % format injection:  SQL_STRING % VAR
+            # % format injection:  SQL_STRING % VAR / SQL_STRING % (a, b)
+            # Suppress only when the formatting values are all known-safe
+            # numeric/whitelist/placeholder vars, e.g. safe LIMIT/OFFSET:
+            #   "... LIMIT %d OFFSET %d" % (limit, offset)
             if next_tok == "%":
-                if not _is_safe_var(i + 2):
+                safe_percent_tuple = False
+                if next2 == "(":
+                    depth = 1
+                    j = i + 3
+                    saw_value = False
+                    all_values_safe = True
+                    while j < len(raw_norm) and depth > 0:
+                        tj = raw_norm[j]
+                        if tj == "(":
+                            depth += 1
+                        elif tj == ")":
+                            depth -= 1
+                            if depth == 0:
+                                break
+                        elif depth >= 1:
+                            if tj in {",", "NUMBER", "STRING", "SQL_STRING"}:
+                                pass
+                            elif tj.startswith("VAR") or tj.startswith("PROPERTY"):
+                                saw_value = True
+                                if tj not in safe_var_placeholders:
+                                    all_values_safe = False
+                                    break
+                            elif tj in safe_var_placeholders:
+                                saw_value = True
+                            else:
+                                # punctuation from indexing/calls is not proof of safety
+                                if tj not in {"[", "]", ".", "+", "-", "*", "/", "%"}:
+                                    all_values_safe = False
+                                    break
+                        j += 1
+                    safe_percent_tuple = saw_value and all_values_safe
+                if not safe_percent_tuple and not _is_safe_var(i + 2):
                     _append_concat_signal(i + 2)
 
             # .format() injection:  SQL_STRING . format(...)

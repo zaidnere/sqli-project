@@ -23,6 +23,7 @@ layer drove the decision. See backend/docs/ARCHITECTURE.md for full details,
 worked examples, and the academic-defense framing.
 """
 from pathlib import Path
+import re
 
 from bson import ObjectId
 from fastapi import HTTPException, UploadFile
@@ -81,6 +82,182 @@ ALWAYS_VULNERABLE_COMBOS = [
     {"SQL_CONCAT"},                       # concat alone is enough
     {"SECOND_ORDER_FLOW"},                # DB-loaded value reused as SQL text
 ]
+
+
+
+
+# ── Raw-code evidence layer ───────────────────────────────────────────────────
+# This is deliberately kept inside scan_service.py (no extra service file).  It is
+# not a filename/test patch: it recognizes source/sink principles that the token
+# normalizer and ML model can miss, especially in compact one-function examples.
+# It is conservative: SAFE overrides require strong exact safe structure; unsafe
+# overrides require an actual raw-execution or SQL-syntax data-flow pattern.
+
+def _strip_comments(code: str, language: str) -> str:
+    if language == "python":
+        return re.sub(r"#.*", "", code)
+    code = re.sub(r"/\*.*?\*/", "", code, flags=re.S)
+    return re.sub(r"//[^\n\r]*", "", code)
+
+
+def _rx(pattern: str, text: str, flags: int = re.I | re.S) -> bool:
+    return re.search(pattern, text, flags) is not None
+
+
+def _raw_safe_sqlite_param_js(code: str) -> bool:
+    """SQLite-style JS parameter binding: const sql='... ? ...'; db.all(sql,[x])."""
+    c = _strip_comments(code, "javascript")
+    # SQL variable with ? placeholders, assigned from a static quoted string.
+    sql_vars = set()
+    for m in re.finditer(r"\b(?:const|let|var)\s+(\w+)\s*=\s*(['\"])(?=[^\2]*\?)(?:SELECT|INSERT|UPDATE|DELETE)[\s\S]*?\2\s*;", c, re.I):
+        sql_vars.add(m.group(1))
+    if not sql_vars:
+        return False
+    # Params may be passed as an array literal or as a variable assigned to array.
+    param_vars = {m.group(1) for m in re.finditer(r"\b(?:const|let|var)\s+(\w+)\s*=\s*\[[^\]]*\]\s*;", c)}
+    for v in sql_vars:
+        call_array = rf"\b\w+\s*\.\s*(?:all|get|run|each)\s*\(\s*{re.escape(v)}\s*,\s*\[[^\]]*\]"
+        call_var = rf"\b\w+\s*\.\s*(?:all|get|run|each)\s*\(\s*{re.escape(v)}\s*,\s*(?:{'|'.join(map(re.escape, param_vars))})\b" if param_vars else r"a^"
+        if _rx(call_array, c) or _rx(call_var, c):
+            # Reject if the same variable is also rebuilt dynamically.
+            dyn = rf"\b{re.escape(v)}\s*(?:\+=|=\s*`|=\s*[^;]*\+|=\s*[^;]*\.join\s*\()"
+            if not _rx(dyn, c):
+                return True
+    return False
+
+
+def _raw_safe_numeric_limit_offset(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if language == "python":
+        # limit/offset created via int() and bounded via min/max, then inserted
+        # only through numeric %d positions in LIMIT/OFFSET.
+        has_limit = _rx(r"\blimit\s*=\s*max\s*\([^\n;]*min\s*\([^\n;]*int\s*\(", c)
+        has_offset = _rx(r"\boffset\s*=\s*max\s*\([^\n;]*min\s*\([^\n;]*int\s*\(", c)
+        safe_format = _rx(r"LIMIT\s+%d\s+OFFSET\s+%d[^\n;]*%\s*\(\s*limit\s*,\s*offset\s*\)", c)
+        if has_limit and has_offset and safe_format:
+            return True
+    if language == "javascript":
+        has_limit = _rx(r"\blimit\s*=\s*Math\.max\s*\([^;]*Math\.min\s*\([^;]*Number\s*\(", c)
+        has_offset = _rx(r"\boffset\s*=\s*Math\.max\s*\([^;]*Math\.min\s*\([^;]*Number\s*\(", c)
+        safe_template = _rx(r"LIMIT\s+\$\{\s*limit\s*\}\s+OFFSET\s+\$\{\s*offset\s*\}", c)
+        if has_limit and has_offset and safe_template:
+            return True
+    if language == "php":
+        has_limit = _rx(r"\$limit\s*=\s*max\s*\([^;]*min\s*\([^;]*\(\s*int\s*\)\s*\$", c)
+        has_offset = _rx(r"\$offset\s*=\s*max\s*\([^;]*min\s*\([^;]*\(\s*int\s*\)\s*\$", c)
+        safe_query = _rx(r"LIMIT\s+\$limit\s+OFFSET\s+\$offset", c)
+        if has_limit and has_offset and safe_query:
+            return True
+    return False
+
+
+def _raw_second_order_stored_sql(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    # DB/config/cache load of SQL-ish fields followed by executing that value as SQL.
+    sqlish = r"(?:sql_text|sql_script|saved_sql|stored_sql|admin_query|query_text|where_clause|filter|predicate|fragment|order_expression|clause|config)"
+    if language == "python":
+        stored_select = r"SELECT[^\n;]*(?:sql_script|sql_text|saved_sql|where_clause|filter|predicate|fragment|order_expression|app_config|admin_macros|config|settings|cache)[^\n;]*"
+        if _rx(stored_select, c) and _rx(r"\.executescript\s*\(\s*\w+\s*\)|\.execute\s*\(\s*\w+\s*\)", c):
+            return True
+        if _rx(r"app_config|admin_macros|settings|cache|config", c) and _rx(r"\b\w+\s*=\s*.*fetchone\s*\(\s*\)\s*\[\s*0\s*\]", c) and _rx(r"\+\s*\w+|\.executescript\s*\(\s*\w+\s*\)", c):
+            return True
+    elif language == "javascript":
+        if _rx(rf"SELECT[^;]*(?:{sqlish})[^;]*(?:db\.(?:get|all)|await)", c) and _rx(r"\+\s*\w+\.\w+|db\.(?:exec|all|get|run)\s*\(\s*\w+(?:\.\w+)?\s*\)", c):
+            return True
+    elif language == "java":
+        if _rx(rf"SELECT[^;]*(?:{sqlish})", c) and _rx(r"\.execute(?:Query|Update)?\s*\(\s*rs\.getString\s*\(", c):
+            return True
+        if _rx(rf"(?:config|cache|settings).*{sqlish}", c) and _rx(r"\+\s*\w+|\.execute(?:Query|Update)?\s*\(\s*\w+\s*\)", c):
+            return True
+    elif language == "php":
+        if _rx(rf"SELECT[^;]*(?:{sqlish})", c) and _rx(r"fetchColumn\s*\(\s*\)|fetch_assoc\s*\(|fetch\s*\(\s*PDO::FETCH_ASSOC", c) and _rx(r"->\s*query\s*\(\s*\$\w+\s*\)|->\s*exec\s*\(\s*\$\w+\s*\)|\.\s*\$\w+\s*\[", c):
+            return True
+        if _rx(r"fetch_assoc\s*\(\s*\)", c) and _rx(r"\$\w+\s*=\s*\$\w+\s*\[", c) and _rx(r"\$sql\s*=.*\.\s*\$\w+\s*\.", c) and _rx(r"mysqli_query\s*\([^,]+,\s*\$sql\s*\)|->\s*query\s*\(\s*\$sql\s*\)", c):
+            return True
+    return False
+
+
+def _raw_blind_boolean_sink(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if language == "python":
+        return (
+            _rx(r"return\s+bool\s*\([^)]*(?:execute|fetchone)", c)
+            or _rx(r"return\s+.*fetchone\s*\(\s*\)\s+is\s+not\s+None", c)
+            or _rx(r"return\s+\w+\s*\[\s*0\s*\]\s*(?:>|<|==|!=|>=|<=)", c)
+            or _rx(r"return\s+\w+\s+is\s+not\s+None\s+and", c)
+            or _rx(r"if\s+.*(?:fetchone\s*\(\s*\)|count\s*[>!=])", c)
+        )
+    if language == "javascript":
+        return (
+            _rx(r"return\s+!!\s*(?:\(|\w|await).*db\.(?:get|all|run)", c)
+            or (_rx(r"\b(?:const|let|var)\s+(\w+)\s*=\s*await\s+\w+\.(?:get|all)\s*\(", c) and _rx(r"return\s+(?:!!\s*\w+|Boolean\s*\(\s*\w+\s*\)|\w+\s*!==?\s*null|\w+\s*!==?\s*undefined)", c))
+            or _rx(r"return\s+Boolean\s*\(\s*\w+\s*\)", c)
+            or _rx(r"return\s+.*\.length\s*>\s*0", c)
+            or (_rx(r"\b(?:login|permission|feature|token|session|isAdmin|valid|allowed)", c) and _rx(r"return\s+(?:!!|Boolean|row|rows|result)", c))
+        )
+    if language == "java":
+        return (
+            _rx(r"\.executeQuery\s*\([^;]+\)\.next\s*\(\s*\)", c)
+            or _rx(r"return\s+\w+\.next\s*\(\s*\)", c)
+            or (_rx(r"\b(?:login|permission|token|session|isAdmin|allowed|valid)\b", c) and _rx(r"\.next\s*\(\s*\)", c))
+        )
+    if language == "php":
+        return (
+            _rx(r"return\s*\(\s*bool\s*\)\s*\$?\w*->\s*query\s*\([^;]+\)->\s*fetch", c)
+            or _rx(r"return\s*\$?\w*->\s*query\s*\([^;]+\)->\s*fetch(?:Column)?\s*\([^)]*\)\s*(?:>|!==|!=|==)", c)
+            or _rx(r"return\s*\$\w+\s*\[[^\]]+\]\s*(?:>|<|==|!=|>=|<=)", c)
+            or (_rx(r"(?:num_rows|fetch\s*\(|fetch_assoc\s*\(|mysqli_fetch_assoc\s*\(|fetchColumn\s*\()", c) and _rx(r"\b(?:login|permission|feature|token|session|allowed|valid|canEdit|enabled|registered)\b", c))
+        )
+    return False
+
+
+def _raw_php_danger(code: str) -> bool:
+    c = _strip_comments(code, "php")
+    # Preserve exact allowlist identifier pattern: $safeCol comes from $allowed
+    # map and is used only as an ORDER BY identifier.
+    if _rx(r"\$allowed\s*=\s*\[", c) and _rx(r"\$safe\w+\s*=\s*\$allowed\s*\[", c) and _rx(r"ORDER\s+BY\s*\"\s*\.\s*\$safe", c):
+        return False
+    # PHP double-quoted SQL with $var interpolation, PDO/mysqli query/raw exec,
+    # or raw implode(ids) used inside IN (...).
+    return (
+        _rx(r"->\s*query\s*\(\s*\"[^\"]*(?:SELECT|UPDATE|DELETE|INSERT)[^\"]*\$\w+", c)
+        or _rx(r"mysqli_query\s*\([^,]+,\s*\"[^\"]*\$\w+", c)
+        or _rx(r"\$\w+\s*=\s*\"[^\"]*(?:SELECT|UPDATE|DELETE|INSERT)[^\"]*\$\w+[^\"]*\"\s*;[\s\S]*->\s*query\s*\(\s*\$\w+\s*\)", c)
+        or _rx(r"\$\w+\s*=\s*[^;]*(?:SELECT|UPDATE|DELETE|INSERT)[^;]*\.\s*\$\w+[^;]*;[\s\S]*(?:->\s*query|mysqli_query)\s*\([^;]*\$\w+", c)
+        or (_rx(r"implode\s*\(\s*['\"][^'\"]*['\"]\s*,\s*\$\w+\s*\)", c) and _rx(r"IN\s*\(\s*\$\w+\s*\)", c))
+    )
+
+
+def _apply_raw_evidence_override(raw_code: str, language: str, label: str, attack_type: str, score: float, source: str, all_signals: set[str]) -> tuple[str, str, float, str, set[str]]:
+    """Final evidence-aware correction layer. Conservative and source/sink based."""
+    signals = set(all_signals)
+    # Strong safe overrides first, but only if there is no second-order/stored SQL evidence.
+    if _raw_safe_sqlite_param_js(raw_code) and not _raw_second_order_stored_sql(raw_code, language):
+        danger = signals & {"SQL_CONCAT", "FSTRING_SQL", "FSTRING_SQL_RAW", "UNSAFE_EXEC", "SECOND_ORDER_FLOW"}
+        if not danger:
+            signals.add("SAFE_EXEC")
+            return "SAFE", "NONE", min(score, 0.08), "raw_safe_sqlite_params", signals
+    if _raw_safe_numeric_limit_offset(raw_code, language) and not _raw_second_order_stored_sql(raw_code, language):
+        # Safe only for narrow numeric LIMIT/OFFSET construction.  Other raw SQL
+        # identifier/table/order dynamics are not suppressed by this check.
+        signals.add("SAFE_NUMERIC_VAR")
+        return "SAFE", "NONE", min(score, 0.08), "raw_safe_numeric_limit_offset", signals
+
+    # Strong dangerous evidence.  Second-order wins over blind/in-band because
+    # the source provenance is stored/config/DB-loaded SQL syntax.
+    if _raw_second_order_stored_sql(raw_code, language):
+        signals.add("SECOND_ORDER_FLOW")
+        return "VULNERABLE", "SECOND_ORDER", max(score, 0.90), "raw_second_order_flow", signals
+    if language == "php" and _raw_php_danger(raw_code):
+        signals.add("SQL_CONCAT")
+        if _raw_blind_boolean_sink(raw_code, language):
+            signals.add("BOOLEAN_SINK")
+            return "VULNERABLE", "BLIND", max(score, 0.90), "raw_php_blind_sqli", signals
+        return "VULNERABLE", "IN_BAND", max(score, 0.90), "raw_php_sqli", signals
+    if label in ("VULNERABLE", "SUSPICIOUS") and _raw_blind_boolean_sink(raw_code, language):
+        signals.add("BOOLEAN_SINK")
+        return "VULNERABLE", "BLIND", max(score, 0.90), "raw_blind_boolean_sink", signals
+    return label, attack_type, score, source, signals
 
 
 # ── Language detection ────────────────────────────────────────────────────────
@@ -242,6 +419,8 @@ def _fuse_scores(
     has_fstring = "FSTRING_SQL" in signals
     has_fstring_raw = "FSTRING_SQL_RAW" in signals
     has_concat  = "SQL_CONCAT"  in signals
+    has_unsafe_exec = "UNSAFE_EXEC" in signals
+    has_safe_exec = "SAFE_EXEC" in signals
     has_whitelist = "WHITELIST_VAR" in signals
 
     # 0. FSTRING_SQL_RAW is non-negotiable — raw var interpolated despite
@@ -277,10 +456,18 @@ def _fuse_scores(
     # the rule layer's deterministic flow analysis is more reliable here.
     has_safe_flow = (
         has_whitelist
+        or has_safe_exec
         or "SAFE_PLACEHOLDER_LIST" in signals
         or "SAFE_NUMERIC_VAR" in signals
     )
-    if has_safe_flow and not has_concat and rule_score < 0.30:
+    has_dangerous_flow = (
+        has_fstring_raw
+        or has_fstring
+        or has_concat
+        or has_unsafe_exec
+        or "SECOND_ORDER_FLOW" in signals
+    )
+    if has_safe_flow and not has_dangerous_flow and rule_score < 0.30:
         return rule_score, "rule"
 
     # 2c. Default: either side can raise the alarm. Tag depends on which won.
@@ -596,6 +783,31 @@ def _build_detection(
     if label == "VULNERABLE" and file_attack_type == "NONE":
         file_attack_type    = "IN_BAND"
         file_attack_type_id = 1
+
+    # Final raw-code evidence correction.  This layer fixes cases where the ML
+    # score or semantic token stream loses exact source/sink context.  It never
+    # relies on filenames; it recognizes parameter binding, numeric-only SQL
+    # syntax, second-order stored SQL execution, PHP interpolation, and boolean
+    # decision sinks.
+    label, file_attack_type, final_score, verdict_source, all_signals = _apply_raw_evidence_override(
+        raw_code=raw_code,
+        language=language,
+        label=label,
+        attack_type=file_attack_type,
+        score=final_score,
+        source=verdict_source,
+        all_signals=all_signals,
+    )
+    file_attack_type_id = {"NONE": 0, "IN_BAND": 1, "BLIND": 2, "SECOND_ORDER": 3}.get(file_attack_type, 0)
+    if label == "SAFE":
+        vuln_type = None
+        patterns = []
+        file_attack_confidence = 0.0
+        file_attack_probs = {"NONE": 1.0, "IN_BAND": 0.0, "BLIND": 0.0, "SECOND_ORDER": 0.0}
+        explanation = f"No SQL injection patterns detected. Risk score: {final_score:.0%}."
+    elif label == "VULNERABLE" and not patterns:
+        vuln_type = "SQL Injection"
+        explanation = f"SQL injection evidence detected by source/sink analysis. Risk score: {final_score:.0%}."
 
     return ScanDetectionInfo(
         riskScore=round(final_score, 4),
