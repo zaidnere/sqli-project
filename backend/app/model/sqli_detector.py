@@ -7,7 +7,7 @@ so that weights saved in Colab (.npz) can be loaded here directly.
 
 Architecture (must match model1_detection.ipynb exactly):
 
-    Input (token_ids, length = MODEL_SEQ_LEN = 128)
+    Input (token_ids, length = MODEL_SEQ_LEN = 256)
         -> Embedding Layer          (vocab_size x EMBED_DIM=64)
         -> Conv1D + ReLU + MaxPool  (CONV_FILTERS=64, kernel=3)  -> (64,)
         -> Bi-LSTM                  (LSTM_HIDDEN=32 each dir)    -> (64,)
@@ -51,11 +51,10 @@ LSTM_HIDDEN = 32
 DENSE_HIDDEN = 64
 DENSE_IN = CONV_FILTERS + 2 * LSTM_HIDDEN   # = 128
 
-# Reduced from 256 -> 128 in line with the dataset re-export. The chunker
-# splits files at function boundaries, so a single chunk never exceeds ~70
-# tokens in practice. 128 keeps the BiLSTM signal strong (less PAD dilution)
-# and roughly halves inference latency.
-MODEL_SEQ_LEN = 128
+# ML-primary v4 uses 256 tokens so the Bi-LSTM sees more context
+# for source-to-sink, BLIND, and SECOND_ORDER patterns.
+# Keep this value aligned with sqli_detection_metadata.json.
+MODEL_SEQ_LEN = 256
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 r"""
-ML-primary Colab export v5 for Model 1 SQLi detection.
+ML-primary Colab export for Model 1 SQLi detection.
 
 This script is intentionally stricter than the old export_for_colab.py:
 - sequence length defaults to 256, so the Bi-LSTM sees more source/sink context.
@@ -12,15 +12,15 @@ This script is intentionally stricter than the old export_for_colab.py:
 
 Run from backend/:
     set PYTHONPATH=%CD%
-    venv\Scripts\python.exe scripts\export_for_colab.py ^
-      --out colab_export ^
+    venv\Scripts\python.exe scripts\export_for_colab_ml_primary_v4.py ^
+      --out colab_export_ml_primary_v4 ^
       --sequence-length 256 ^
-      --generated-per-class 32 ^
-      --generated-seeds 20260511 20260512 20260513 20260514 20260515
+      --generated-per-class 8 ^
+      --generated-seeds 20260507 20260508 20260509
 
 Upload these to Colab:
-    colab_export_ml_primary_v5/vocabulary.json
-    colab_export_ml_primary_v5/training_data.npz
+    colab_export_ml_primary_v4/vocabulary.json
+    colab_export_ml_primary_v4/training_data.npz
 """
 from __future__ import annotations
 
@@ -106,93 +106,10 @@ def ident(r: random.Random, prefix: str = "v") -> str:
     return prefix + "_" + "".join(r.choice(string.ascii_lowercase) for _ in range(7))
 
 
-def structural_noise(lang: str, r: random.Random, salt: int) -> str:
-    """Return harmless code fragments that survive normalization.
-
-    Random names alone normalize away (VAR_0, FUNC_0, ...), so the exporter must
-    create structural diversity, not only identifier diversity. These fragments
-    are label-neutral and are used for SAFE and VULNERABLE examples alike.
-    """
-    k = salt % 10
-    if lang == "python":
-        snippets = [
-            "tmp = 0\nif tmp >= 0:\n    tmp = tmp + 1\n",
-            "items = []\nfor item in items:\n    tmp = item\n",
-            "try:\n    tmp = int(1)\nexcept Exception:\n    tmp = 0\n",
-            "helper = {'a': 1}\ntmp = helper.get('a')\n",
-            "def local_helper(x):\n    return x\nmarker = local_helper(1)\n",
-            "flag = True\nif flag:\n    marker = 'ok'\nelse:\n    marker = 'no'\n",
-            "values = [1, 2, 3]\nmarker = len(values)\n",
-            "name = str('x').strip()\n",
-            "with_context = None\n",
-            "cache = {'safe': 'value'}\ncache_value = cache['safe']\n",
-        ]
-        return "\n".join(snippets[(k + i * 3) % len(snippets)] for i in range(1 + (salt % 4)))
-    if lang == "javascript":
-        snippets = [
-            "let tmp = 0; if (tmp >= 0) { tmp = tmp + 1; }",
-            "const arr = []; for (const item of arr) { tmp = item; }",
-            "try { tmp = Number(1); } catch (e) { tmp = 0; }",
-            "const helper = { a: 1 }; tmp = helper.a;",
-            "function localHelper(x) { return x; } const marker = localHelper(1);",
-            "const flag = true; const marker2 = flag ? 'ok' : 'no';",
-            "const values = [1, 2, 3]; const size = values.length;",
-            "const name = String('x').trim();",
-            "let cacheValue = null;",
-            "const cache = new Map(); cache.set('safe', 'value');",
-        ]
-        return "\n".join(snippets[(k + i * 3) % len(snippets)] for i in range(1 + (salt % 4)))
-    if lang == "java":
-        snippets = [
-            "int tmp = 0; if (tmp >= 0) { tmp = tmp + 1; }",
-            "java.util.List<String> arr = java.util.List.of(); for (String item : arr) { String tmpS = item; }",
-            "try { int x = Integer.parseInt(\"1\"); } catch (Exception e) { int x = 0; }",
-            "java.util.Map<String,String> helper = java.util.Map.of(\"a\", \"b\"); String v = helper.get(\"a\");",
-            "boolean flag = true; String marker = flag ? \"ok\" : \"no\";",
-            "String name = String.valueOf(\"x\").trim();",
-            "java.util.Set<String> s = java.util.Set.of(\"a\", \"b\"); boolean has = s.contains(\"a\");",
-            "StringBuilder sb = new StringBuilder(); sb.append(\"x\");",
-            "Object cacheValue = null;",
-            "long now = System.currentTimeMillis();",
-        ]
-        return "\n".join(snippets[(k + i * 3) % len(snippets)] for i in range(1 + (salt % 4)))
-    # php
-    snippets = [
-        "$tmp = 0; if ($tmp >= 0) { $tmp = $tmp + 1; }",
-        "$arr = []; foreach ($arr as $item) { $tmp = $item; }",
-        "try { $x = intval(1); } catch (Exception $e) { $x = 0; }",
-        "$helper = ['a' => 1]; $tmp = $helper['a'];",
-        "$flag = true; $marker = $flag ? 'ok' : 'no';",
-        "$values = [1, 2, 3]; $size = count($values);",
-        "$name = trim(strval('x'));",
-        "$cacheValue = null;",
-        "$set = ['a' => true, 'b' => true]; $has = isset($set['a']);",
-        "$builder = ''; $builder .= 'x';",
-    ]
-    return "\n".join(snippets[(k + i * 3) % len(snippets)] for i in range(1 + (salt % 4)))
-
-
-def add_noise_to_code(lang: str, code: str, r: random.Random, salt: int) -> str:
-    noise = structural_noise(lang, r, salt)
-    if not noise:
-        return code
-    if lang == "python":
-        return noise + "\n" + code
-    if lang == "javascript":
-        return code.replace("{\n", "{\n" + noise + "\n", 1)
-    if lang == "java":
-        # Put noise at the beginning of the first method body, not at class scope.
-        return code.replace("throws Exception {\n", "throws Exception {\n" + noise + "\n", 1)
-    if lang == "php":
-        return code.replace("{\n", "{\n" + noise + "\n", 1)
-    return code
-
-
-
 def generated_training_samples(seed: int, per_class: int) -> Iterable[Tuple[str, str, str, str]]:
     """Yield (language, attack_type, source_id, code) generated variants.
 
-    These examples target the observed generalization gaps and are intentionally oversampled in v5:
+    These examples target the observed generalization gaps:
     - Java SAFE allowlist + prepared statement builders.
     - Python/PHP BLIND boolean sinks.
     - PHP SECOND_ORDER stored/config fragments.
@@ -295,7 +212,7 @@ async function run_{ident(r, 'fn')}(req, db) {{
         return f'''
 import java.sql.*; import java.util.*;
 class {cls} {{
-  List<String> list(HttpServletRequest req, Connection c) throws Exception {{
+  ResultSet list(HttpServletRequest req, Connection c) throws Exception {{
     Set<String> allowed = Set.of("created_at", "email", "name");
     String sort = allowed.contains(req.getParameter("sort")) ? req.getParameter("sort") : "created_at";
     int limit = Math.min(Math.max(Integer.parseInt(req.getParameter("limit")), 1), 100);
@@ -304,8 +221,7 @@ class {cls} {{
     PreparedStatement ps = c.prepareStatement(sql);
     ps.setString(1, req.getUserPrincipal().getName());
     ps.setInt(2, limit);
-    ps.executeQuery();
-    return List.of();
+    return ps.executeQuery();
   }}
 }}
 '''
@@ -379,25 +295,24 @@ function find_{ident(r, 'fn')}($mysqli, $q) {{
 
     def php_blind() -> str:
         return f'''<?php
-function login_{ident(r, 'fn')}($mysqli) {{
-    $name = $_POST["name"] ?? "";
-    $sql = "SELECT id FROM users WHERE name='" . $name . "'";
-    $res = mysqli_query($mysqli, $sql);
-    return mysqli_num_rows($res) > 0;
+function active_{ident(r, 'fn')}($mysqli, $q) {{
+    $token = $q["token"] ?? "";
+    $sql = "SELECT id FROM sessions WHERE token='" . $token . "'";
+    $result = $mysqli->query($sql);
+    return $result && $result->num_rows > 0;
 }}
 ?>'''
 
     def php_second() -> str:
-        loader = "load_" + ident(r, 'frag')
         return f'''<?php
-function {loader}($pdo, $id) {{
+function load_{ident(r, 'frag')}($pdo, $id) {{
     $stmt = $pdo->prepare("SELECT where_clause FROM saved_filters WHERE id=?");
     $stmt->execute([$id]);
-    $row = $stmt->fetch();
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
     return $row["where_clause"];
 }}
 function run_{ident(r, 'fn')}($pdo, $id) {{
-    $where = {loader}($pdo, $id);
+    $where = load_{ident(r, 'frag')}($pdo, $id);
     $sql = "SELECT * FROM audit_log WHERE " . $where;
     return $pdo->query($sql)->fetchAll();
 }}
@@ -413,8 +328,7 @@ function run_{ident(r, 'fn')}($pdo, $id) {{
         for attack_type, fn in by_type.items():
             for j in range(per_class):
                 source_id = f"generated_seed{seed}/{lang}/{attack_type}/{j:03d}"
-                salt = abs(hash((seed, lang, attack_type, j))) % 100000
-                yield lang, attack_type, source_id, add_noise_to_code(lang, fn(), r, salt)
+                yield lang, attack_type, source_id, fn()
 
 
 class DatasetBuilder:
@@ -473,32 +387,7 @@ class DatasetBuilder:
 
 
 def add_original_export_samples(builder: DatasetBuilder) -> None:
-    """Add legacy hand-written samples when an old exporter module exists.
-
-    This file now *replaces* scripts/export_for_colab.py. Therefore importing
-    scripts.export_for_colab would import this file itself and would fail to find
-    the old VULNERABLE_BASE / SAFE_BASE constants.
-
-    To keep replacement safe, we only use a legacy module if the developer kept
-    one under a different name, for example scripts/export_for_colab_legacy.py.
-    If not found, we continue with the generated ML-primary dataset.
-    """
-    old = None
-    for module_name in ("scripts.export_for_colab_legacy", "scripts.export_for_colab_old"):
-        try:
-            candidate = importlib.import_module(module_name)
-        except Exception:
-            continue
-        if all(hasattr(candidate, name) for name in ("VULNERABLE_BASE", "SAFE_BASE", "generate_mutated_vuln", "generate_mutated_safe")):
-            old = candidate
-            print(f"      using legacy samples from {module_name}")
-            break
-
-    if old is None:
-        print("      legacy sample module not found; skipping old embedded samples")
-        print("      generated ML-primary samples will still be exported")
-        return
-
+    old = importlib.import_module("scripts.export_for_colab")
     old.MODEL_SEQ_LEN = builder.sequence_length
 
     def add_from_list(samples, label: str, suite_name: str):
@@ -574,10 +463,10 @@ def profile_dataset(arrays: dict, vocab: dict, sequence_length: int, duplicates_
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="colab_export_ml_primary_v5")
+    ap.add_argument("--out", default="colab_export_ml_primary_v4")
     ap.add_argument("--sequence-length", type=int, default=256)
-    ap.add_argument("--generated-per-class", type=int, default=32)
-    ap.add_argument("--generated-seeds", nargs="*", type=int, default=[20260511, 20260512, 20260513, 20260514, 20260515])
+    ap.add_argument("--generated-per-class", type=int, default=8)
+    ap.add_argument("--generated-seeds", nargs="*", type=int, default=[20260507, 20260508, 20260509])
     ap.add_argument("--include-suite", action="append", default=[], help="Optional labelled suite ZIP to add to training data. Avoid exact eval suites unless intentional.")
     args = ap.parse_args()
 
@@ -617,7 +506,7 @@ def main() -> int:
     profile = profile_dataset(arrays, vocab, args.sequence_length, builder.duplicates_dropped)
     (out_dir / "dataset_profile.json").write_text(json.dumps(profile, indent=2, ensure_ascii=False), encoding="utf-8")
     export_info = {
-        "export_version": "ml-primary-v5",
+        "export_version": "ml-primary-v4",
         "sequence_length": args.sequence_length,
         "generated_seeds": args.generated_seeds,
         "generated_per_class": args.generated_per_class,

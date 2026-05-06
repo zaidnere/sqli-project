@@ -1,0 +1,137 @@
+{
+  "created_at": "2026-05-06T18:51:51.271768Z",
+  "n_samples": 2939,
+  "sequence_length": 256,
+  "vocabulary_size": 179,
+  "vocabulary_sha256": "ae3141d41fb1d93e33d54e6571c570e1e6286f079afdb1c2440a5d439632e92f",
+  "pad_id": 0,
+  "unk_id": 1,
+  "verdict_counts": {
+    "SAFE": 1607,
+    "VULNERABLE": 1332
+  },
+  "attack_type_counts": {
+    "NONE": 1607,
+    "IN_BAND": 842,
+    "BLIND": 274,
+    "SECOND_ORDER": 216
+  },
+  "language_counts": {
+    "unknown_legacy": 2619,
+    "python": 80,
+    "java": 80,
+    "javascript": 80,
+    "php": 80
+  },
+  "avg_non_pad_length": 48.28274923443348,
+  "max_non_pad_length": 256,
+  "min_non_pad_length": 10,
+  "padded_samples": 2935,
+  "truncated_samples": 0,
+  "truncation_rate": 0.0,
+  "unk_token_count": 600,
+  "unk_rate": 0.004228240417750153,
+  "duplicate_sequence_count": 0,
+  "top_tokens": [
+    [
+      "(",
+      12157
+    ],
+    [
+      ")",
+      12155
+    ],
+    [
+      ".",
+      10035
+    ],
+    [
+      "=",
+      8462
+    ],
+    [
+      "STRING",
+      7378
+    ],
+    [
+      ";",
+      7147
+    ],
+    [
+      "VAR_2",
+      4978
+    ],
+    [
+      "VAR_1",
+      4963
+    ],
+    [
+      "VAR_0",
+      4899
+    ],
+    [
+      "VAR_3",
+      4443
+    ],
+    [
+      ",",
+      4143
+    ],
+    [
+      "VAR_4",
+      3437
+    ],
+    [
+      "FUNC_0",
+      3413
+    ],
+    [
+      "SQL_STRING",
+      2907
+    ],
+    [
+      "FUNC_1",
+      2888
+    ],
+    [
+      "VAR_5",
+      2503
+    ],
+    [
+      ":",
+      2496
+    ],
+    [
+      "[",
+      2240
+    ],
+    [
+      "]",
+      2240
+    ],
+    [
+      "PROPERTY_0",
+      2035
+    ],
+    [
+      "FUNC_2",
+      1993
+    ],
+    [
+      "{",
+      1977
+    ],
+    [
+      "NUMBER",
+      1971
+    ],
+    [
+      "}",
+      1969
+    ],
+    [
+      "+",
+      1894
+    ]
+  ]
+}
