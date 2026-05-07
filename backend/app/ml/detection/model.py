@@ -118,12 +118,13 @@ class HybridCNNBiLSTMDetector:
         c = self.config
         W = self.weights["conv_W"]
         b = self.weights["conv_b"]
-        out_len = max(1, emb.shape[0] - c.kernel_size + 1)
+        if emb.shape[0] < c.kernel_size:
+            pad = np.zeros((c.kernel_size - emb.shape[0], emb.shape[1]), dtype=np.float32)
+            emb = np.vstack([emb, pad])
+        windows = np.lib.stride_tricks.sliding_window_view(emb, window_shape=c.kernel_size, axis=0)
+        patches = windows.transpose(0, 2, 1).reshape(windows.shape[0], -1)
         W_flat = W.reshape(c.conv_filters, -1)
-        conv_out = np.zeros((out_len, c.conv_filters), dtype=np.float32)
-        for pos in range(out_len):
-            patch = emb[pos : pos + c.kernel_size].flatten()
-            conv_out[pos] = W_flat @ patch + b
+        conv_out = patches @ W_flat.T + b
         return np.max(_relu(conv_out), axis=0)
 
     def _lstm_step(self, x_t: np.ndarray, h: np.ndarray, cell: np.ndarray, W: np.ndarray, b: np.ndarray):

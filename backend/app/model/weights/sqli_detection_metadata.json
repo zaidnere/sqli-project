@@ -1,6 +1,6 @@
 {
-  "model_version": "model1-cnn-bilstm-dual-head-ml-primary-v5",
-  "training_date_utc": "2026-05-06T22:03:54.495875Z",
+  "model_version": "model1-cnn-bilstm-dual-head-flow-balanced-v9",
+  "training_date_utc": "2026-05-07T20:39:44.442616Z",
   "dataset_version": "ae3141d41fb1",
   "normalizer_version": "semantic-normalizer-v2",
   "vocabulary_sha256": "ae3141d41fb1d93e33d54e6571c570e1e6286f079afdb1c2440a5d439632e92f",
@@ -8,7 +8,7 @@
   "pad_id": 0,
   "unk_id": 1,
   "architecture": {
-    "model_version": "model1-cnn-bilstm-dual-head-ml-primary-v5",
+    "model_version": "model1-cnn-bilstm-dual-head-flow-balanced-v9",
     "input": {
       "shape": [
         "batch",
@@ -47,175 +47,236 @@
         }
       }
     },
-    "loss": "weighted_BCE + lambda_type * weighted_CCE",
-    "lambda_type": 0.75,
+    "loss": "sample_weighted_BCE + lambda_type * sample_weighted_CCE",
+    "lambda_type": 1.05,
+    "hardcase_training": "V9 uses balanced hard-SAFE + hard-VULNERABLE flow calibration to improve raw ML recall, SAFE specificity and attack-type accuracy",
     "threshold": 0.5
   },
   "threshold": 0.5,
   "class_weights": {
-    "SAFE": 0.914222240447998,
-    "VULNERABLE": 1.1035407781600952
+    "SAFE": 2.0814433097839355,
+    "VULNERABLE": 0.828956127166748
   },
   "attack_type_class_weights": {
-    "NONE": 0.457111120223999,
-    "IN_BAND": 0.8730899691581726,
-    "BLIND": 2.6783854961395264,
-    "SECOND_ORDER": 3.4056291580200195
+    "NONE": 1.1708118915557861,
+    "IN_BAND": 0.7202280759811401,
+    "BLIND": 3.340257406234741,
+    "SECOND_ORDER": 1.9362103939056396
+  },
+  "hardcase_training": {
+    "uses_sample_weight_binary": true,
+    "uses_sample_weight_type": true,
+    "type_hardcase_boost": {
+      "NONE": 1.350000023841858,
+      "IN_BAND": 1.2200000286102295,
+      "BLIND": 1.350000023841858,
+      "SECOND_ORDER": 1.4500000476837158
+    },
+    "binary_hardcase_boost": {
+      "SAFE": 1.2000000476837158,
+      "VULNERABLE": 1.1799999475479126
+    },
+    "target_problem": "V9: keep vulnerable recall high while reducing raw ML false positives on prepared/bindings/allowlist/query-builder SAFE flow"
   },
   "split_info": {
     "strategy": "stratified_by_attack_type_and_language_when_available",
     "seed": 42,
-    "train_count": 2057,
-    "val_count": 440,
-    "test_count": 442,
-    "train_indices_sha256": "c234c218792ac3b08ac91d4c7e8dbaa9af4ea5a9fb2fff06ad456644b58fdb13",
-    "val_indices_sha256": "dfc9a6d123a613125fa4e014ed895daa46615a4126ba3f0d80b2ebaebd031107",
-    "test_indices_sha256": "92954a62e48584bce0e1fd667a551eaff1e58974bf392568bd73bc176148a417",
+    "train_count": 673,
+    "val_count": 144,
+    "test_count": 145,
+    "train_indices_sha256": "5bcb0dc63e33262f4cc0b498b5f60cca1f1e90b03956fdb6bf4ca1ceb690c5a5",
+    "val_indices_sha256": "d654344da7e5cdfe235c02140f70a704e277eb08090974ceb545f13b47b551c0",
+    "test_indices_sha256": "8dec3e7ff98753c39b1d666a741fbe73a6fc7331612562767a4d1b2517730b25",
     "binary_class_weights": {
-      "SAFE": 0.914222240447998,
-      "VULNERABLE": 1.1035407781600952
+      "SAFE": 2.0814433097839355,
+      "VULNERABLE": 0.828956127166748
     },
     "attack_type_class_weights": {
-      "NONE": 0.457111120223999,
-      "IN_BAND": 0.8730899691581726,
-      "BLIND": 2.6783854961395264,
-      "SECOND_ORDER": 3.4056291580200195
+      "NONE": 1.1708118915557861,
+      "IN_BAND": 0.7202280759811401,
+      "BLIND": 3.340257406234741,
+      "SECOND_ORDER": 1.9362103939056396
+    },
+    "type_hardcase_boost": {
+      "NONE": 1.350000023841858,
+      "IN_BAND": 1.2200000286102295,
+      "BLIND": 1.350000023841858,
+      "SECOND_ORDER": 1.4500000476837158
+    },
+    "binary_hardcase_boost": {
+      "SAFE": 1.2000000476837158,
+      "VULNERABLE": 1.1799999475479126
+    },
+    "sample_weight_summary": {
+      "train_binary_mean": 3.10326886177063,
+      "train_type_mean": 2.8396735191345215,
+      "train_binary_max": 3.700000047683716,
+      "train_type_max": 3.9000000953674316
+    },
+    "train_family_counts": {
+      "v9_flow_vuln:SECOND_ORDER": 99,
+      "v9_flow_safe:python": 58,
+      "v9_flow_safe:php": 48,
+      "v9_flow_safe:javascript": 45,
+      "v9_flow_vuln:IN_BAND": 260,
+      "baseline:NONE": 28,
+      "baseline:SECOND_ORDER": 27,
+      "baseline:BLIND": 26,
+      "baseline:IN_BAND": 25,
+      "v9_flow_vuln:BLIND": 42,
+      "v9_flow_safe:java": 15
     }
   },
   "dataset_profile": {
-    "created_at": "2026-05-06T18:51:51.271768Z",
-    "n_samples": 2939,
+    "created_at": "2026-05-07T19:46:40.357691Z",
+    "n_samples": 962,
     "sequence_length": 256,
     "vocabulary_size": 179,
     "vocabulary_sha256": "ae3141d41fb1d93e33d54e6571c570e1e6286f079afdb1c2440a5d439632e92f",
     "pad_id": 0,
     "unk_id": 1,
     "verdict_counts": {
-      "SAFE": 1607,
-      "VULNERABLE": 1332
+      "SAFE": 277,
+      "VULNERABLE": 685
     },
     "attack_type_counts": {
-      "NONE": 1607,
-      "IN_BAND": 842,
-      "BLIND": 274,
-      "SECOND_ORDER": 216
+      "NONE": 277,
+      "IN_BAND": 408,
+      "BLIND": 97,
+      "SECOND_ORDER": 180
     },
     "language_counts": {
-      "unknown_legacy": 2619,
-      "python": 80,
-      "java": 80,
-      "javascript": 80,
-      "php": 80
+      "python": 270,
+      "javascript": 258,
+      "php": 257,
+      "java": 177
     },
-    "avg_non_pad_length": 48.28274923443348,
+    "sample_family_counts": {
+      "baseline:NONE": 37,
+      "v9_flow_vuln:IN_BAND": 371,
+      "v9_flow_vuln:SECOND_ORDER": 140,
+      "v9_flow_safe:javascript": 68,
+      "v9_flow_vuln:BLIND": 59,
+      "baseline:IN_BAND": 37,
+      "baseline:BLIND": 38,
+      "v9_flow_safe:php": 68,
+      "baseline:SECOND_ORDER": 40,
+      "v9_flow_safe:python": 85,
+      "v9_flow_safe:java": 19
+    },
+    "avg_sample_weight_binary": 3.1011438369750977,
+    "avg_sample_weight_type": 2.8352391719818115,
+    "max_sample_weight_binary": 3.700000047683716,
+    "max_sample_weight_type": 3.9000000953674316,
+    "avg_non_pad_length": 106.67879417879418,
     "max_non_pad_length": 256,
-    "min_non_pad_length": 10,
-    "padded_samples": 2935,
-    "truncated_samples": 0,
-    "truncation_rate": 0.0,
-    "unk_token_count": 600,
-    "unk_rate": 0.004228240417750153,
+    "min_non_pad_length": 38,
+    "padded_samples": 960,
+    "truncated_samples": 2,
+    "truncation_rate": 0.002079002079002079,
+    "unk_token_count": 1360,
+    "unk_rate": 0.013252131546894032,
     "duplicate_sequence_count": 0,
     "top_tokens": [
       [
         "(",
-        12157
+        7626
       ],
       [
         ")",
-        12155
-      ],
-      [
-        ".",
-        10035
+        7626
       ],
       [
         "=",
-        8462
-      ],
-      [
-        "STRING",
-        7378
+        6988
       ],
       [
         ";",
-        7147
+        6317
       ],
       [
-        "VAR_2",
-        4978
+        ".",
+        6222
       ],
       [
-        "VAR_1",
-        4963
-      ],
-      [
-        "VAR_0",
-        4899
-      ],
-      [
-        "VAR_3",
-        4443
+        "STRING",
+        5112
       ],
       [
         ",",
-        4143
-      ],
-      [
-        "VAR_4",
-        3437
-      ],
-      [
-        "FUNC_0",
-        3413
-      ],
-      [
-        "SQL_STRING",
-        2907
-      ],
-      [
-        "FUNC_1",
-        2888
-      ],
-      [
-        "VAR_5",
-        2503
-      ],
-      [
-        ":",
-        2496
-      ],
-      [
-        "[",
-        2240
-      ],
-      [
-        "]",
-        2240
-      ],
-      [
-        "PROPERTY_0",
-        2035
-      ],
-      [
-        "FUNC_2",
-        1993
-      ],
-      [
-        "{",
-        1977
+        3580
       ],
       [
         "NUMBER",
-        1971
+        2754
+      ],
+      [
+        "VAR_3",
+        2505
+      ],
+      [
+        "VAR_1",
+        2171
+      ],
+      [
+        "VAR_2",
+        2065
+      ],
+      [
+        "{",
+        2043
       ],
       [
         "}",
-        1969
+        2039
       ],
       [
-        "+",
-        1894
+        "VAR_4",
+        1828
+      ],
+      [
+        "VAR_5",
+        1813
+      ],
+      [
+        "VAR_6",
+        1699
+      ],
+      [
+        ":",
+        1643
+      ],
+      [
+        "VAR_7",
+        1584
+      ],
+      [
+        "[",
+        1521
+      ],
+      [
+        "]",
+        1521
+      ],
+      [
+        "SAFE_NUMERIC_VAR",
+        1451
+      ],
+      [
+        "VAR_8",
+        1390
+      ],
+      [
+        "UNK",
+        1360
+      ],
+      [
+        "SQL_STRING",
+        1301
+      ],
+      [
+        "VAR_0",
+        1295
       ]
     ]
   },

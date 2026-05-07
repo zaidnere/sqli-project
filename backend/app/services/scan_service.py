@@ -23,6 +23,7 @@ layer drove the decision. See backend/docs/ARCHITECTURE.md for full details,
 worked examples, and the academic-defense framing.
 """
 from pathlib import Path
+import json
 import re
 
 from bson import ObjectId
@@ -57,11 +58,66 @@ from app.schemas.scan import (
 from app.services.audit_log_service import log_audit_event
 from app.vectorization.vocabulary import build_fixed_vocabulary
 from app.vectorization.vectorizer import vectorize_tokens
-from app.model.inference import run_inference
+from app.model.inference import run_inference, model_is_loaded
 from app.model.fix_model_inference import run_fix_inference
 from app.fix_engine.fix_generator import generate_fix
 
 VOCABULARY = build_fixed_vocabulary()
+
+_DETECTION_METADATA_PATH = Path(__file__).resolve().parents[1] / "model" / "weights" / "sqli_detection_metadata.json"
+_DETECTION_METADATA_CACHE: dict | None = None
+
+
+def _detection_metadata() -> dict:
+    """Best-effort model metadata for API/audit reports."""
+    global _DETECTION_METADATA_CACHE
+    if _DETECTION_METADATA_CACHE is not None:
+        return _DETECTION_METADATA_CACHE
+    try:
+        _DETECTION_METADATA_CACHE = json.loads(_DETECTION_METADATA_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        _DETECTION_METADATA_CACHE = {}
+    return _DETECTION_METADATA_CACHE
+
+
+def _model_version() -> str | None:
+    return _detection_metadata().get("model_version")
+
+
+def _model_sequence_length() -> int | None:
+    value = _detection_metadata().get("sequence_length")
+    try:
+        return int(value) if value is not None else None
+    except Exception:
+        return None
+
+
+def _label_from_score(score: float | None) -> str | None:
+    if score is None:
+        return None
+    if score >= 0.70:
+        return "VULNERABLE"
+    if score >= 0.45:
+        return "SUSPICIOUS"
+    return "SAFE"
+
+
+def _decision_source_bucket(source: str, ml_executed: bool) -> str:
+    """Coarse audit category while preserving the exact verdictSource separately."""
+    s = (source or "").lower()
+    if s.startswith("raw_"):
+        return "raw_evidence_override"
+    if s == "ml":
+        return "ml_primary"
+    if s in {"ml+rule", "ml_overrides_rule"}:
+        return "ml_supported_by_evidence"
+    if s == "semantic_safe_guard":
+        return "semantic_safe_guard"
+    if s == "rule_safety_net":
+        return "rule_safety_net_no_model" if not ml_executed else "rule_safety_net"
+    if s == "rule":
+        return "rule_primary"
+    return s or ("ml_primary" if ml_executed else "unknown")
 
 # ── Signal severity weights ───────────────────────────────────────────────────
 
@@ -152,6 +208,37 @@ def _raw_safe_numeric_limit_offset(code: str, language: str) -> bool:
         if has_limit and has_offset and safe_use:
             return True
     if language == "javascript":
+        # Track numeric-safe variables, not only variables literally named
+        # limit/offset. Real code often uses names such as safeSize, pageSize,
+        # safeLimit, offset, etc. A variable is considered numeric-safe if it is
+        # derived from Number()/parseInt()/Math.min()/Math.max()/clamp(), or from
+        # arithmetic over already-safe numeric variables. This keeps single-arg
+        # db.all(sql) safe when the only interpolation is bounded numeric
+        # LIMIT/OFFSET syntax.
+        safe_numeric: set[str] = set()
+        assign_re = re.compile(r"\b(?:const|let|var)\s+(\w+)\s*=\s*([^;]+);", re.I | re.S)
+        for _ in range(3):
+            changed = False
+            for m in assign_re.finditer(c):
+                name, rhs = m.group(1), m.group(2)
+                if name in safe_numeric:
+                    continue
+                rhs_names = set(re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", rhs))
+                has_numeric_wrapper = re.search(r"\b(?:Number|parseInt|parseFloat|Math\.min|Math\.max|clamp)\s*\(", rhs, re.I) is not None
+                arithmetic_only = bool(re.fullmatch(r"[\s\w()+\-*/%.,]+", rhs)) and bool(rhs_names) and rhs_names <= (safe_numeric | {"Math", "Number", "parseInt", "parseFloat"})
+                if has_numeric_wrapper or arithmetic_only:
+                    safe_numeric.add(name)
+                    changed = True
+            if not changed:
+                break
+        if len(safe_numeric) >= 2:
+            # Template SQL: `... LIMIT ${safeSize} OFFSET ${offset} ...`
+            for m in re.finditer(r"`(?=[\s\S]*?\b(?:SELECT|INSERT|UPDATE|DELETE)\b)[\s\S]*?\bLIMIT\s+\$\{\s*(\w+)\s*\}\s+OFFSET\s+\$\{\s*(\w+)\s*\}[\s\S]*?`", c, re.I):
+                if m.group(1) in safe_numeric and m.group(2) in safe_numeric:
+                    return True
+            # Concatenated/static SQL forms using safe numeric vars.
+            if _rx(r"LIMIT\s+\$?\{?\s*(?:" + "|".join(map(re.escape, safe_numeric)) + r")\s*\}?\s+OFFSET\s+\$?\{?\s*(?:" + "|".join(map(re.escape, safe_numeric)) + r")\s*\}?", c):
+                return True
         has_limit = _rx(r"\blimit\s*=\s*(?:clamp\s*\(|Math\.max\s*\([^;]*Math\.min\s*\([^;]*(?:Number|parseInt)\s*\()", c)
         has_offset = _rx(r"\boffset\s*=\s*(?:clamp\s*\(|Math\.max\s*\([^;]*Math\.min\s*\([^;]*(?:Number|parseInt)\s*\()", c)
         safe_template = _rx(r"LIMIT\s+\$\{\s*limit\s*\}\s+OFFSET\s+\$\{\s*offset\s*\}", c)
@@ -166,11 +253,159 @@ def _raw_safe_numeric_limit_offset(code: str, language: str) -> bool:
     return False
 
 
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:
+    """Strict safe dynamic SQL identifier proof.
+
+    This covers the common, valid pattern where SQL syntax positions such as
+    ORDER BY columns/directions or table names are dynamic, but the selected
+    identifier is taken only from a closed allowlist/map before execution.
+
+    It is intentionally strict: every interpolation inside the executed SQL
+    template must reference a proven safe identifier variable. If the SQL uses
+    the raw request variable (sort_by, direction, req.query.sort, etc.) the
+    function returns False and the detector can still flag it.
+    """
+    c = _strip_comments(code, language)
+    if _raw_second_order_stored_sql(code, language):
+        return False
+
+    safe_vars: set[str] = set()
+
+    if language == "python":
+        # safe_col = sort_by if sort_by in ALLOWED_COLUMNS else "created_at"
+        # safe_dir = direction.upper() if direction.upper() in ALLOWED_DIRECTIONS else "DESC"
+        for m in re.finditer(
+            r"\b(\w+)\s*=\s*[^\n;]+\s+if\s+[^\n;]+\s+in\s+\w+\s+else\s+['\"][\w.]+['\"]",
+            c,
+            re.I,
+        ):
+            safe_vars.add(m.group(1))
+        # table = TABLE_MAP.get(requested_table, "users")
+        for m in re.finditer(
+            r"\b(\w+)\s*=\s*\w+\s*\.\s*get\s*\([^,]+,\s*['\"][\w.]+['\"]\s*\)",
+            c,
+            re.I,
+        ):
+            safe_vars.add(m.group(1))
+
+        # safe_col = pick_allowed(sort_by, ALLOWED_COLUMNS, "created_at")
+        # safe_dir = pick_allowed(direction.upper(), ALLOWED_DIRECTIONS, "DESC")
+        # Covers a closed helper that returns value only when it is in the
+        # provided allowlist, otherwise a constant default. This is still strict:
+        # only the helper output variable becomes safe. If SQL interpolates the
+        # original raw variable (sort_by/direction), it will NOT be considered safe.
+        has_closed_pick_helper = bool(
+            re.search(
+                r"def\s+\w+\s*\([^)]*\ballowed\b[^)]*\bdefault\b[^)]*\)\s*:[\s\S]{0,240}"
+                r"return\s+\w+\s+if\s+\w+\s+in\s+allowed\s+else\s+default",
+                c,
+                re.I,
+            )
+        )
+        if has_closed_pick_helper:
+            for m in re.finditer(
+                r"\b(\w+)\s*=\s*\w+\s*\([^\n;]*\bALLOWED_[A-Z0-9_]+\b[^\n;]*,\s*['\"][\w.]+['\"]\s*\)",
+                c,
+                re.I,
+            ):
+                safe_vars.add(m.group(1))
+            # safe_col, safe_dir = normalize_sort(...)
+            # def normalize_sort(...): ... return col, dir_
+            for m in re.finditer(
+                r"\b([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*=\s*\w+\s*\([^\n;]*\)",
+                c,
+                re.I,
+            ):
+                # Accept only when the same file contains a normalizer/helper that
+                # returns two variables created through pick_allowed(... ALLOWED_* ...).
+                if re.search(
+                    r"def\s+\w+\s*\([^)]*\)\s*:[\s\S]{0,500}"
+                    r"\w+\s*=\s*\w+\s*\([^\n;]*\bALLOWED_[A-Z0-9_]+\b[^\n;]*\)[\s\S]{0,240}"
+                    r"\w+\s*=\s*\w+\s*\([^\n;]*\bALLOWED_[A-Z0-9_]+\b[^\n;]*\)[\s\S]{0,160}"
+                    r"return\s+\w+\s*,\s*\w+",
+                    c,
+                    re.I,
+                ):
+                    safe_vars.add(m.group(1))
+                    safe_vars.add(m.group(2))
+        if not safe_vars:
+            return False
+
+        sql_templates: list[str] = []
+        for m in re.finditer(
+            r"\b(?:sql|query)\s*=\s*f([\"'])(?=[\s\S]{0,80}\b(?:SELECT|INSERT|UPDATE|DELETE)\b)([\s\S]*?)\1",
+            c,
+            re.I,
+        ):
+            sql_templates.append(m.group(2))
+        if not sql_templates:
+            return False
+
+        has_sink = _rx(r"\.execute\s*\(\s*(?:sql|query)\s*\)", c) or _rx(r"\.execute\s*\(\s*(?:sql|query)\s*,", c)
+        if not has_sink:
+            return False
+
+        for tmpl in sql_templates:
+            # Only identifier syntax positions are allowed for this safe proof.
+            # Values must still be parameterized elsewhere.
+            if not re.search(r"\b(?:ORDER\s+BY|FROM)\b", tmpl, re.I):
+                continue
+            placeholders = set(re.findall(r"\{\s*([A-Za-z_]\w*)\s*\}", tmpl))
+            if placeholders and placeholders.issubset(safe_vars):
+                return True
+        return False
+
+    if language == "javascript":
+        # const safeCol = ALLOWED_COLUMNS.has(sortBy) ? sortBy : "created_at";
+        # const safeDir = ALLOWED_DIRECTIONS.has(String(direction).toUpperCase()) ? ... : "DESC";
+        for m in re.finditer(
+            r"\b(?:const|let|var)\s+(\w+)\s*=\s*[^;?]+\.has\s*\([^;?]+\)\s*\?\s*[^:;]+:\s*['\"][\w.]+['\"]",
+            c,
+            re.I | re.S,
+        ):
+            safe_vars.add(m.group(1))
+        # const table = TABLE_MAP.get(requested) || "users" / ?? "users"
+        for m in re.finditer(
+            r"\b(?:const|let|var)\s+(\w+)\s*=\s*\w+\s*\.\s*get\s*\([^)]*\)\s*(?:\?\?|\|\|)\s*['\"][\w.]+['\"]",
+            c,
+            re.I | re.S,
+        ):
+            safe_vars.add(m.group(1))
+        if not safe_vars:
+            return False
+
+        sql_templates: list[str] = []
+        for m in re.finditer(
+            r"\b(?:const|let|var)\s+(?:sql|query)\s*=\s*`(?=[\s\S]{0,80}\b(?:SELECT|INSERT|UPDATE|DELETE)\b)([\s\S]*?)`\s*;",
+            c,
+            re.I,
+        ):
+            sql_templates.append(m.group(1))
+        if not sql_templates:
+            return False
+
+        has_sink = _rx(r"\.\s*(?:all|get|run|each|query|execute)\s*\(\s*(?:sql|query)\s*\)", c) or _rx(r"\.\s*(?:all|get|run|each|query|execute)\s*\(\s*(?:sql|query)\s*,", c)
+        if not has_sink:
+            return False
+
+        for tmpl in sql_templates:
+            if not re.search(r"\b(?:ORDER\s+BY|FROM)\b", tmpl, re.I):
+                continue
+            placeholders = set(re.findall(r"\$\{\s*([A-Za-z_]\w*)\s*\}", tmpl))
+            if placeholders and placeholders.issubset(safe_vars):
+                return True
+        return False
+
+    return False
+
+
 def _raw_safe_query_builder(code: str, language: str) -> bool:
     """Recognize a complete safe dynamic query-builder sink, not isolated SAFE_EXEC."""
     c = _strip_comments(code, language)
     if _raw_second_order_stored_sql(code, language):
         return False
+    if _raw_safe_allowlisted_identifier_sql(code, language):
+        return True
     if language == "python":
         # Values are bound through params; identifiers are selected from dict/map or fixed direction; numeric paging is bounded.
         has_param_exec = _rx(r"\.execute\s*\(\s*\w+\s*,", c)
@@ -289,6 +524,17 @@ def _raw_second_order_stored_sql(code: str, language: str) -> bool:
             return True
         if _rx(r'''function\s+\w*(?:Clause|Filter|Sql|Condition|Order)\w*\s*\([^)]*\)[\s\S]*?SELECT[\s\S]*?(?:tenant_config|config|saved|filter|report|widget)[\s\S]*?fetch\s*\([^)]*\)[\s\S]*?return\s+\$\w+\s*\[\s*['\"](?:value|where_clause|where_fragment|order_clause|filter|condition|sql_text|sql_body|query_sql)['\"]\s*\]''', c) and _rx(r"\$\w+\s*=\s*\$this->\w+\s*\([\s\S]*?\)\s*;[\s\S]*?(?:ORDER\s+BY|WHERE|AND|HAVING|GROUP\s+BY)[^;]*\.\s*\$\w+", c):
             return True
+        # Generic loader-helper second-order pattern. Keep this deliberately
+        # cheap and bounded for huge PHP repositories: first check that a helper
+        # returns a SQL-ish DB field, then check that a SQL-ish variable is
+        # concatenated into $sql and executed.
+        if (
+            re.search(r"return\s+\$\w+\s*\[\s*['\"](?:where_clause|where_fragment|order_clause|filter|condition|sql_text|sql_body|query_sql)['\"]\s*\]", c, re.I)
+            and re.search(r"\$(?:where|filter|clause|fragment|condition|sql|query)\w*\s*=\s*\w+\s*\(", c, re.I)
+            and re.search(r"\$sql\s*=\s*[^;]{0,500}\.\s*\$(?:where|filter|clause|fragment|condition|sql|query)\w*", c, re.I)
+            and re.search(r"->\s*query\s*\(\s*\$sql\s*\)", c, re.I)
+        ):
+            return True
     return False
 
 
@@ -302,7 +548,7 @@ def _raw_blind_boolean_sink(code: str, language: str) -> bool:
             _rx(r"return\s+bool\s*\([^)]*(?:execute|fetchone)", c)
             or _rx(r"return\s+.*fetchone\s*\(\s*\)\s+is\s+not\s+None", c)
             or _rx(r"return\s+\w+\s*\[\s*0\s*\]\s*(?:>|<|==|!=|>=|<=)", c)
-            or _rx(r"return\s+\w+\s+is\s+not\s+None\s+and", c)
+            or _rx(r"return\s+\w+\s+is\s+not\s+None(?:\s*(?:$|#|;|\n)|\s+and)", c)
             or (_rx(r"fetchone\s*\(\s*\)", c) and _rx(r"return\s+\w+\s*(?:>|<|==|!=|>=|<=)\s*", c))
             or (_rx(r"fetchone\s*\(\s*\)", c) and _rx(r"return\s+\w+\s*\(\s*\w+\s*\)", c))
             or _rx(r"if\s+.*(?:fetchone\s*\(\s*\)|count\s*[>!=])", c)
@@ -327,6 +573,7 @@ def _raw_blind_boolean_sink(code: str, language: str) -> bool:
             or _rx(r"return\s*\$?\w*->\s*query\s*\([^;]+\)->\s*fetch(?:Column)?\s*\([^)]*\)\s*(?:>|!==|!=|==)", c)
             or _rx(r"return\s*\$\w+\s*&&\s*\$\w+->\s*(?:num_rows|fetch_assoc\s*\(\s*\))\s*(?:>|!==|!=|==)", c)
             or _rx(r"return\s*\$\w+->\s*num_rows\s*>\s*0", c)
+            or _rx(r"return\s*mysqli_num_rows\s*\(\s*\$\w+\s*\)\s*>\s*0", c)
             or _rx(r"return\s*\$\w+\s*&&\s*\$\w+->fetch_assoc\s*\(\s*\)\s*!==\s*null", c)
             or _rx(r"return\s*\$\w+\s*\[[^\]]+\]\s*(?:>|<|==|!=|>=|<=)", c)
             or (_rx(r"(?:num_rows|fetch\s*\(|fetch_assoc\s*\(|mysqli_fetch_assoc\s*\(|fetchColumn\s*\()", c) and _rx(r"\b(?:login|authenticate|permission|feature|token|session|allowed|valid|canDelete|canAccess|canEdit|enabled|registered)\b", c))
@@ -413,15 +660,63 @@ def _raw_java_inband_danger(code: str) -> bool:
 
 def _raw_java_safe_allowlist_order(code: str) -> bool:
     c = _strip_comments(code, "java")
-    safe_vars = []
-    for m in re.finditer(r"String\s+(\w+)\s*=\s*\w+\.contains\s*\(\s*(\w+)\s*\)\s*\?\s*\2\s*:\s*['\"]\w+['\"]", c):
-        safe_vars.append((m.group(1), m.group(2)))
+    safe_vars: list[str] = []
+
+    # Generic allowlist ternary forms:
+    #   String sort = allowed.contains(sortRaw) ? sortRaw : "created_at";
+    #   String sort = allowed.contains(req.getParameter("sort")) ? req.getParameter("sort") : "created_at";
+    for m in re.finditer(
+        r"String\s+(\w+)\s*=\s*\w+\.contains\s*\([^;?]+\)\s*\?\s*[^:;]+:\s*['\"]\w+['\"]",
+        c,
+        re.I | re.S,
+    ):
+        safe_vars.append(m.group(1))
+
+    # Map/get style allowlists can also produce safe identifiers.
+    for m in re.finditer(
+        r"String\s+(\w+)\s*=\s*\w+\.getOrDefault\s*\([^;]+,\s*['\"]\w+['\"]\s*\)",
+        c,
+        re.I | re.S,
+    ):
+        safe_vars.append(m.group(1))
+
     if not safe_vars:
         return False
-    for safe, raw in safe_vars:
-        if _rx(rf"ORDER\s+BY\s*['\"]?\s*\+\s*{re.escape(safe)}\b", c) and not _rx(rf"ORDER\s+BY\s*['\"]?\s*\+\s*{re.escape(raw)}\b", c):
+
+    for safe in set(safe_vars):
+        uses_safe_order = _rx(rf"ORDER\s+BY[\s\S]{{0,160}}\+\s*{re.escape(safe)}\b", c)
+        if uses_safe_order:
             return True
     return False
+
+def _raw_java_safe_jpa_native_params(code: str) -> bool:
+    """Safe JPA native query with named parameters bound via setParameter.
+
+    Conservative: createNativeQuery must receive a static SQL string with named
+    placeholders, and every placeholder must be bound with setParameter.
+    """
+    c = _strip_comments(code, "java")
+    m = re.search(
+        r'(?:javax\.persistence\.)?Query\s+(\w+)\s*=\s*\w+\.createNativeQuery\s*\(\s*(["\'])([\s\S]*?)\2\s*\)',
+        c,
+        re.I,
+    )
+    if not m:
+        return False
+    qvar, sql = m.group(1), m.group(3)
+    if "+" in sql or "${" in sql:
+        return False
+    placeholders = set(re.findall(r":([A-Za-z_]\w*)", sql))
+    if not placeholders:
+        return False
+    bound = set(re.findall(rf'\b{re.escape(qvar)}\.setParameter\s*\(\s*["\']([A-Za-z_]\w*)["\']\s*,', c))
+    if not placeholders.issubset(bound):
+        return False
+    if _rx(r"createStatement\s*\(\s*\)\.execute(?:Query|Update)?\s*\(", c):
+        return False
+    if _rx(r"createNativeQuery\s*\([^)]*\+", c):
+        return False
+    return True
 
 
 def _raw_php_safe_prepared_only(code: str) -> bool:
@@ -431,10 +726,14 @@ def _raw_php_safe_prepared_only(code: str) -> bool:
     has_prepare = _rx(r"->\s*prepare\s*\(", c) or _rx(r"mysqli_prepare\s*\(", c) or _rx(r"\$\w+\s*=\s*\$\w+->prepare\s*\(", c)
     has_binding = _raw_php_has_bound_execute(c) or _rx(r"->\s*bind_param\s*\(", c) or _rx(r"mysqli_stmt_bind_param\s*\(", c)
     has_raw_query = _rx(r"->\s*(?:query|exec)\s*\(", c) or _rx(r"mysqli_query\s*\(", c)
-    # `prepare($sql); execute([...])` is safe even when `$sql` contains an
-    # allowlisted ORDER BY or numeric LIMIT interpolation.  It is not safe if a
-    # separate raw query/exec sink exists in the same PHP file.
-    return bool(has_prepare and has_binding and not has_raw_query)
+    has_raw_prepare_syntax = (
+        _rx(r"->\s*prepare\s*\([\s\S]*?(?:ORDER\s+BY|GROUP\s+BY|HAVING|WHERE|AND|OR|IN\s*\()[\s\S]*?\.\s*\$", c)
+        or _rx(r"\$\w+\s*=\s*[^;]*(?:SELECT|UPDATE|DELETE|INSERT)[^;]*\.\s*\$\w+[^;]*;[\s\S]*->\s*prepare\s*\(\s*\$\w+\s*\)", c)
+    )
+    # Prepared execution is safe only when dynamic values are placeholders or
+    # bound parameters. It must not suppress raw SQL syntax interpolation such as
+    # ORDER BY " . $raw.
+    return bool(has_prepare and has_binding and not has_raw_query and not has_raw_prepare_syntax)
 
 def _apply_raw_evidence_override(raw_code: str, language: str, label: str, attack_type: str, score: float, source: str, all_signals: set[str]) -> tuple[str, str, float, str, set[str]]:
     """Final evidence-aware correction layer. Conservative and source/sink based."""
@@ -446,6 +745,15 @@ def _apply_raw_evidence_override(raw_code: str, language: str, label: str, attac
     if _raw_second_order_stored_sql(raw_code, language):
         signals.add("SECOND_ORDER_FLOW")
         return "VULNERABLE", "SECOND_ORDER", max(score, 0.90), "raw_second_order_flow", signals
+
+    # Strong safe identifier proof must run BEFORE raw concat/template danger.
+    # Safe ORDER BY / FROM syntax may be executed as one SQL string, so the ML
+    # and UNSAFE_EXEC token can overreact unless we prove that every dynamic
+    # identifier came from an allowlist/map.
+    if _raw_safe_allowlisted_identifier_sql(raw_code, language):
+        signals.add("WHITELIST_VAR")
+        signals.add("SAFE_EXEC")
+        return "SAFE", "NONE", min(score, 0.08), "raw_safe_allowlisted_identifier", signals
 
     if language == "python" and _raw_python_raw_concat_executed(raw_code):
         signals.add("SQL_CONCAT")
@@ -463,6 +771,9 @@ def _apply_raw_evidence_override(raw_code: str, language: str, label: str, attac
         return "SAFE", "NONE", min(score, 0.08), "raw_safe_db_loaded_bound_param", signals
 
     # Strong safe overrides: tied to an executed sink, and only when no stored SQL execution evidence exists.
+    if language == "java" and _raw_java_safe_jpa_native_params(raw_code):
+        signals.add("SAFE_EXEC")
+        return "SAFE", "NONE", min(score, 0.08), "raw_java_jpa_native_params", signals
     if language == "java" and _raw_java_safe_allowlist_order(raw_code):
         signals.add("WHITELIST_VAR")
         return "SAFE", "NONE", min(score, 0.08), "raw_java_allowlist_order", signals
@@ -582,6 +893,17 @@ def _rule_score(signals: set[str]) -> float:
     if "WHITELIST_VAR" in signals and "SQL_CONCAT" not in signals:
         return 0.10
 
+    # Numeric-only interpolation into SQL syntax (LIMIT/OFFSET) is safe even
+    # when the DB API call has a single SQL argument. The normalizer emits
+    # SAFE_NUMERIC_VAR for values derived from Number/int/min/max/clamp. Treat
+    # this as a safe deterministic guard only when no raw SQL-construction signal
+    # exists.
+    if (
+        "SAFE_NUMERIC_VAR" in signals
+        and not (signals & {"SQL_CONCAT", "FSTRING_SQL", "FSTRING_SQL_RAW", "SECOND_ORDER_FLOW", "DB_LOADED_VAR"})
+    ):
+        return 0.08
+
     if _is_hard_vulnerable(signals):
         return 0.90
 
@@ -698,6 +1020,16 @@ def _fuse_scores(
         or "SAFE_PLACEHOLDER_LIST" in signals
         or "SAFE_NUMERIC_VAR" in signals
     )
+    # SAFE_NUMERIC_VAR is special: many APIs execute safe LIMIT/OFFSET SQL as a
+    # single SQL string, so UNSAFE_EXEC can be present even though the value flow
+    # is numeric-only and bounded. Do not let that single-arg sink alone block
+    # the safe guard. For all other flows, UNSAFE_EXEC remains dangerous.
+    if (
+        "SAFE_NUMERIC_VAR" in signals
+        and not (signals & {"FSTRING_SQL_RAW", "FSTRING_SQL", "SQL_CONCAT", "SECOND_ORDER_FLOW", "DB_LOADED_VAR"})
+        and rule_score < 0.30
+    ):
+        return rule_score, "semantic_safe_guard"
     has_dangerous_flow = (
         has_fstring_raw
         or has_fstring
@@ -706,7 +1038,7 @@ def _fuse_scores(
         or "SECOND_ORDER_FLOW" in signals
     )
     if has_safe_flow and not has_dangerous_flow and rule_score < 0.30:
-        return rule_score, "rule"
+        return rule_score, "semantic_safe_guard"
 
     # 2c. Default: either side can raise the alarm. Tag depends on which won.
     fused = max(ml_score, rule_score)
@@ -842,6 +1174,16 @@ def _raw_fast_detection(raw_code: str, language: str) -> ScanDetectionInfo | Non
     ML/chunk pipeline runs.
     """
     def make(label: str, attack_type: str, score: float, source: str, explanation: str) -> ScanDetectionInfo:
+        probs = {
+            "NONE": 1.0 if label == "SAFE" else 0.0,
+            "IN_BAND": 1.0 if attack_type == "IN_BAND" else 0.0,
+            "BLIND": 1.0 if attack_type == "BLIND" else 0.0,
+            "SECOND_ORDER": 1.0 if attack_type == "SECOND_ORDER" else 0.0,
+        }
+        # This fast path intentionally does NOT execute the neural model.  The
+        # audit fields make that explicit so we never mistake raw source/sink
+        # evidence for an ML decision.
+        loaded = model_is_loaded()
         return ScanDetectionInfo(
             riskScore=round(score, 4),
             label=label,
@@ -849,21 +1191,38 @@ def _raw_fast_detection(raw_code: str, language: str) -> ScanDetectionInfo | Non
             vulnerabilityType="SQL Injection" if label == "VULNERABLE" else None,
             explanation=explanation,
             suspiciousPatterns=[],
-            modelLoaded=True,
+            modelLoaded=loaded,
             verdictSource=source,
             attackType=attack_type,
             attackTypeConfidence=1.0 if label == "VULNERABLE" else 0.0,
-            attackTypeProbs={
-                "NONE": 1.0 if label == "SAFE" else 0.0,
-                "IN_BAND": 1.0 if attack_type == "IN_BAND" else 0.0,
-                "BLIND": 1.0 if attack_type == "BLIND" else 0.0,
-                "SECOND_ORDER": 1.0 if attack_type == "SECOND_ORDER" else 0.0,
-            },
+            attackTypeProbs=probs,
             attackTypeAvailable=True,
+            mlExecuted=False,
+            mlRiskScore=None,
+            mlPredictedVerdict=None,
+            mlPredictedAttackType=None,
+            mlAttackTypeConfidence=0.0,
+            mlAttackTypeProbabilities={},
+            ruleScore=round(score, 4),
+            finalRiskScore=round(score, 4),
+            finalVerdict=label,
+            fusionReason=source,
+            decisionSource="raw_evidence_fast_path",
+            rawEvidenceOverrideApplied=True,
+            preOverrideVerdict=None,
+            preOverrideAttackType=None,
+            preOverrideRiskScore=None,
+            worstChunk="__raw_fast__",
+            chunkCount=0,
+            modelVersion=_model_version(),
+            modelSequenceLength=_model_sequence_length(),
         )
 
     if _raw_second_order_stored_sql(raw_code, language):
         return make("VULNERABLE", "SECOND_ORDER", 0.90, "raw_second_order_flow", "Stored/config/DB-loaded SQL fragment reaches SQL syntax or direct execution.")
+
+    if _raw_safe_allowlisted_identifier_sql(raw_code, language):
+        return make("SAFE", "NONE", 0.08, "raw_safe_allowlisted_identifier", "Dynamic SQL identifier is selected only from a strict allowlist/map before execution.")
 
     if language == "javascript" and _raw_js_inband_danger(raw_code):
         return make("VULNERABLE", "IN_BAND", 0.90, "raw_js_sqli", "Raw JavaScript SQL reaches a framework/alias execution sink.")
@@ -891,6 +1250,8 @@ def _raw_fast_detection(raw_code: str, language: str) -> ScanDetectionInfo | Non
 
     if language == "java" and _raw_java_safe_allowlist_order(raw_code):
         return make("SAFE", "NONE", 0.08, "raw_java_allowlist_order", "ORDER BY value is selected by exact Set.contains allowlist before execution.")
+    if language == "java" and _raw_java_safe_jpa_native_params(raw_code):
+        return make("SAFE", "NONE", 0.08, "raw_java_jpa_named_params", "JPA native query uses named placeholders and binds all parameters with setParameter.")
 
     if language == "php" and _raw_php_safe_prepared_only(raw_code):
         return make("SAFE", "NONE", 0.08, "raw_php_prepared_params", "Only prepared statements with bound parameters are executed.")
@@ -912,6 +1273,7 @@ def _build_detection(
     # for backward compat with history items that don't store chunk data
     file_norm: list[str] | None = None,
     file_token_ids: list[int] | None = None,
+    force_ml: bool = False,
 ) -> ScanDetectionInfo:
     """
     Chunk-level detection with max-pool aggregation.
@@ -923,9 +1285,10 @@ def _build_detection(
     4. Apply hard override: if ANY chunk has HARD_VULNERABLE signals → VULNERABLE
     5. Build the final verdict from the worst chunk's score
     """
-    fast = _raw_fast_detection(raw_code, language)
-    if fast is not None:
-        return fast
+    if not force_ml:
+        fast = _raw_fast_detection(raw_code, language)
+        if fast is not None:
+            return fast
 
     chunks = split_into_chunks(raw_code, language)
 
@@ -958,7 +1321,19 @@ def _build_detection(
     for r in results:
         all_signals |= r["signals"]
 
-    model_loaded = worst["mlScore"] is not None
+    ml_chunks = [r for r in results if r["mlScore"] is not None]
+    model_loaded = bool(ml_chunks)
+    ml_worst = max(ml_chunks, key=lambda r: r["mlScore"]) if ml_chunks else None
+    ml_file_score = ml_worst["mlScore"] if ml_worst is not None else None
+    ml_file_verdict = _label_from_score(ml_file_score)
+    ml_file_attack_type = (
+        ml_worst["attackType"]
+        if ml_worst is not None and ml_file_verdict != "SAFE"
+        else "NONE"
+    )
+    ml_file_attack_conf = ml_worst["attackTypeConfidence"] if ml_worst is not None else 0.0
+    ml_file_attack_probs = ml_worst["attackTypeProbs"] if ml_worst is not None else {}
+    file_rule_score = max((r["ruleScore"] for r in results), default=None)
 
     # Hard-override floor is now a FAILSAFE for the no-ML path only.
     # When the ML model is loaded, _fuse_scores() has already let ML decide,
@@ -1101,6 +1476,10 @@ def _build_detection(
     # relies on filenames; it recognizes parameter binding, numeric-only SQL
     # syntax, second-order stored SQL execution, PHP interpolation, and boolean
     # decision sinks.
+    pre_override_label = label
+    pre_override_attack_type = file_attack_type
+    pre_override_score = final_score
+    pre_override_source = verdict_source
     label, file_attack_type, final_score, verdict_source, all_signals = _apply_raw_evidence_override(
         raw_code=raw_code,
         language=language,
@@ -1110,6 +1489,15 @@ def _build_detection(
         source=verdict_source,
         all_signals=all_signals,
     )
+    # For audit purposes, an override means the raw-evidence layer changed the
+    # actual decision (verdict or attack type).  If it only adjusted the score or
+    # explanation while keeping the same decision, we keep the earlier ML/fusion
+    # source as the decision owner.
+    raw_override_applied = (
+        label != pre_override_label
+        or file_attack_type != pre_override_attack_type
+    )
+    decision_owner_source = verdict_source if raw_override_applied else pre_override_source
     file_attack_type_id = {"NONE": 0, "IN_BAND": 1, "BLIND": 2, "SECOND_ORDER": 3}.get(file_attack_type, 0)
     if label == "SAFE":
         vuln_type = None
@@ -1135,6 +1523,26 @@ def _build_detection(
         attackTypeConfidence=file_attack_confidence,
         attackTypeProbs=file_attack_probs,
         attackTypeAvailable=type_head_available,
+        # ML-vs-fusion audit fields
+        mlExecuted=model_loaded,
+        mlRiskScore=round(ml_file_score, 4) if ml_file_score is not None else None,
+        mlPredictedVerdict=ml_file_verdict,
+        mlPredictedAttackType=ml_file_attack_type,
+        mlAttackTypeConfidence=round(float(ml_file_attack_conf), 4),
+        mlAttackTypeProbabilities=ml_file_attack_probs or {},
+        ruleScore=round(file_rule_score, 4) if file_rule_score is not None else None,
+        finalRiskScore=round(final_score, 4),
+        finalVerdict=label,
+        fusionReason=verdict_source,
+        decisionSource=_decision_source_bucket(decision_owner_source, model_loaded),
+        rawEvidenceOverrideApplied=raw_override_applied,
+        preOverrideVerdict=pre_override_label,
+        preOverrideAttackType=pre_override_attack_type,
+        preOverrideRiskScore=round(pre_override_score, 4),
+        worstChunk=worst["chunkName"],
+        chunkCount=len(results),
+        modelVersion=_model_version(),
+        modelSequenceLength=_model_sequence_length(),
     )
 
 

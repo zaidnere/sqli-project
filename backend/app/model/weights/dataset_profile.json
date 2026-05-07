@@ -1,137 +1,153 @@
 {
-  "created_at": "2026-05-06T18:51:51.271768Z",
-  "n_samples": 2939,
+  "created_at": "2026-05-07T19:46:40.357691Z",
+  "n_samples": 962,
   "sequence_length": 256,
   "vocabulary_size": 179,
   "vocabulary_sha256": "ae3141d41fb1d93e33d54e6571c570e1e6286f079afdb1c2440a5d439632e92f",
   "pad_id": 0,
   "unk_id": 1,
   "verdict_counts": {
-    "SAFE": 1607,
-    "VULNERABLE": 1332
+    "SAFE": 277,
+    "VULNERABLE": 685
   },
   "attack_type_counts": {
-    "NONE": 1607,
-    "IN_BAND": 842,
-    "BLIND": 274,
-    "SECOND_ORDER": 216
+    "NONE": 277,
+    "IN_BAND": 408,
+    "BLIND": 97,
+    "SECOND_ORDER": 180
   },
   "language_counts": {
-    "unknown_legacy": 2619,
-    "python": 80,
-    "java": 80,
-    "javascript": 80,
-    "php": 80
+    "python": 270,
+    "javascript": 258,
+    "php": 257,
+    "java": 177
   },
-  "avg_non_pad_length": 48.28274923443348,
+  "sample_family_counts": {
+    "baseline:NONE": 37,
+    "v9_flow_vuln:IN_BAND": 371,
+    "v9_flow_vuln:SECOND_ORDER": 140,
+    "v9_flow_safe:javascript": 68,
+    "v9_flow_vuln:BLIND": 59,
+    "baseline:IN_BAND": 37,
+    "baseline:BLIND": 38,
+    "v9_flow_safe:php": 68,
+    "baseline:SECOND_ORDER": 40,
+    "v9_flow_safe:python": 85,
+    "v9_flow_safe:java": 19
+  },
+  "avg_sample_weight_binary": 3.1011438369750977,
+  "avg_sample_weight_type": 2.8352391719818115,
+  "max_sample_weight_binary": 3.700000047683716,
+  "max_sample_weight_type": 3.9000000953674316,
+  "avg_non_pad_length": 106.67879417879418,
   "max_non_pad_length": 256,
-  "min_non_pad_length": 10,
-  "padded_samples": 2935,
-  "truncated_samples": 0,
-  "truncation_rate": 0.0,
-  "unk_token_count": 600,
-  "unk_rate": 0.004228240417750153,
+  "min_non_pad_length": 38,
+  "padded_samples": 960,
+  "truncated_samples": 2,
+  "truncation_rate": 0.002079002079002079,
+  "unk_token_count": 1360,
+  "unk_rate": 0.013252131546894032,
   "duplicate_sequence_count": 0,
   "top_tokens": [
     [
       "(",
-      12157
+      7626
     ],
     [
       ")",
-      12155
-    ],
-    [
-      ".",
-      10035
+      7626
     ],
     [
       "=",
-      8462
-    ],
-    [
-      "STRING",
-      7378
+      6988
     ],
     [
       ";",
-      7147
+      6317
     ],
     [
-      "VAR_2",
-      4978
+      ".",
+      6222
     ],
     [
-      "VAR_1",
-      4963
-    ],
-    [
-      "VAR_0",
-      4899
-    ],
-    [
-      "VAR_3",
-      4443
+      "STRING",
+      5112
     ],
     [
       ",",
-      4143
-    ],
-    [
-      "VAR_4",
-      3437
-    ],
-    [
-      "FUNC_0",
-      3413
-    ],
-    [
-      "SQL_STRING",
-      2907
-    ],
-    [
-      "FUNC_1",
-      2888
-    ],
-    [
-      "VAR_5",
-      2503
-    ],
-    [
-      ":",
-      2496
-    ],
-    [
-      "[",
-      2240
-    ],
-    [
-      "]",
-      2240
-    ],
-    [
-      "PROPERTY_0",
-      2035
-    ],
-    [
-      "FUNC_2",
-      1993
-    ],
-    [
-      "{",
-      1977
+      3580
     ],
     [
       "NUMBER",
-      1971
+      2754
+    ],
+    [
+      "VAR_3",
+      2505
+    ],
+    [
+      "VAR_1",
+      2171
+    ],
+    [
+      "VAR_2",
+      2065
+    ],
+    [
+      "{",
+      2043
     ],
     [
       "}",
-      1969
+      2039
     ],
     [
-      "+",
-      1894
+      "VAR_4",
+      1828
+    ],
+    [
+      "VAR_5",
+      1813
+    ],
+    [
+      "VAR_6",
+      1699
+    ],
+    [
+      ":",
+      1643
+    ],
+    [
+      "VAR_7",
+      1584
+    ],
+    [
+      "[",
+      1521
+    ],
+    [
+      "]",
+      1521
+    ],
+    [
+      "SAFE_NUMERIC_VAR",
+      1451
+    ],
+    [
+      "VAR_8",
+      1390
+    ],
+    [
+      "UNK",
+      1360
+    ],
+    [
+      "SQL_STRING",
+      1301
+    ],
+    [
+      "VAR_0",
+      1295
     ]
   ]
 }

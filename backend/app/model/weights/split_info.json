@@ -1,20 +1,49 @@
 {
   "strategy": "stratified_by_attack_type_and_language_when_available",
   "seed": 42,
-  "train_count": 2057,
-  "val_count": 440,
-  "test_count": 442,
-  "train_indices_sha256": "c234c218792ac3b08ac91d4c7e8dbaa9af4ea5a9fb2fff06ad456644b58fdb13",
-  "val_indices_sha256": "dfc9a6d123a613125fa4e014ed895daa46615a4126ba3f0d80b2ebaebd031107",
-  "test_indices_sha256": "92954a62e48584bce0e1fd667a551eaff1e58974bf392568bd73bc176148a417",
+  "train_count": 673,
+  "val_count": 144,
+  "test_count": 145,
+  "train_indices_sha256": "5bcb0dc63e33262f4cc0b498b5f60cca1f1e90b03956fdb6bf4ca1ceb690c5a5",
+  "val_indices_sha256": "d654344da7e5cdfe235c02140f70a704e277eb08090974ceb545f13b47b551c0",
+  "test_indices_sha256": "8dec3e7ff98753c39b1d666a741fbe73a6fc7331612562767a4d1b2517730b25",
   "binary_class_weights": {
-    "SAFE": 0.914222240447998,
-    "VULNERABLE": 1.1035407781600952
+    "SAFE": 2.0814433097839355,
+    "VULNERABLE": 0.828956127166748
   },
   "attack_type_class_weights": {
-    "NONE": 0.457111120223999,
-    "IN_BAND": 0.8730899691581726,
-    "BLIND": 2.6783854961395264,
-    "SECOND_ORDER": 3.4056291580200195
+    "NONE": 1.1708118915557861,
+    "IN_BAND": 0.7202280759811401,
+    "BLIND": 3.340257406234741,
+    "SECOND_ORDER": 1.9362103939056396
+  },
+  "type_hardcase_boost": {
+    "NONE": 1.350000023841858,
+    "IN_BAND": 1.2200000286102295,
+    "BLIND": 1.350000023841858,
+    "SECOND_ORDER": 1.4500000476837158
+  },
+  "binary_hardcase_boost": {
+    "SAFE": 1.2000000476837158,
+    "VULNERABLE": 1.1799999475479126
+  },
+  "sample_weight_summary": {
+    "train_binary_mean": 3.10326886177063,
+    "train_type_mean": 2.8396735191345215,
+    "train_binary_max": 3.700000047683716,
+    "train_type_max": 3.9000000953674316
+  },
+  "train_family_counts": {
+    "v9_flow_vuln:SECOND_ORDER": 99,
+    "v9_flow_safe:python": 58,
+    "v9_flow_safe:php": 48,
+    "v9_flow_safe:javascript": 45,
+    "v9_flow_vuln:IN_BAND": 260,
+    "baseline:NONE": 28,
+    "baseline:SECOND_ORDER": 27,
+    "baseline:BLIND": 26,
+    "baseline:IN_BAND": 25,
+    "v9_flow_vuln:BLIND": 42,
+    "v9_flow_safe:java": 15
   }
 }

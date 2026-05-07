@@ -179,14 +179,19 @@ class SQLiDetector:
         return self.emb_W[token_ids]
 
     def _conv1d_maxpool(self, emb: np.ndarray) -> np.ndarray:
-        seq_len = emb.shape[0]
+        # Vectorized Conv1D. This is mathematically equivalent to the previous
+        # Python loop over positions, but avoids hundreds of small matrix-vector
+        # multiplications per chunk and makes suite runs noticeably faster.
         k = KERNEL_SIZE
-        out_len = max(1, seq_len - k + 1)
-        W_flat = self.conv_W.reshape(CONV_FILTERS, -1)   # (F, k*in_ch)
-        conv_out = np.zeros((out_len, CONV_FILTERS), dtype=np.float32)
-        for pos in range(out_len):
-            patch = emb[pos: pos + k].flatten()
-            conv_out[pos] = W_flat @ patch + self.conv_b
+        if emb.shape[0] < k:
+            pad = np.zeros((k - emb.shape[0], emb.shape[1]), dtype=np.float32)
+            emb = np.vstack([emb, pad])
+        windows = np.lib.stride_tricks.sliding_window_view(emb, window_shape=k, axis=0)
+        # sliding_window_view returns (out_len, embed_dim, k); transpose to
+        # (out_len, k, embed_dim), matching emb[pos:pos+k].flatten().
+        patches = windows.transpose(0, 2, 1).reshape(windows.shape[0], -1)
+        W_flat = self.conv_W.reshape(CONV_FILTERS, -1)
+        conv_out = patches @ W_flat.T + self.conv_b
         return np.max(_relu(conv_out), axis=0)
 
     def _lstm_step(self, x_t, h, c, W, b):

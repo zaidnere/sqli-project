@@ -8,6 +8,28 @@ class SuspiciousPattern(BaseModel): pattern: str; description: str; severity: st
 class ScanDetectionInfo(BaseModel):
     riskScore: float; label: str; confidence: float; vulnerabilityType: Optional[str]; explanation: str; suspiciousPatterns: List[SuspiciousPattern]; modelLoaded: bool
     verdictSource: str = "ml"; attackType: str = "NONE"; attackTypeConfidence: float = 0.0; attackTypeProbs: Dict[str, float] = {}; attackTypeAvailable: bool = False
+    # ML-vs-fusion audit fields. These make the final report/debug runners show
+    # whether the CNN+BiLSTM model, rules, semantic guard, or raw evidence layer
+    # drove the final decision. Existing frontend code can ignore them safely.
+    mlExecuted: bool = False
+    mlRiskScore: Optional[float] = None
+    mlPredictedVerdict: Optional[str] = None
+    mlPredictedAttackType: Optional[str] = None
+    mlAttackTypeConfidence: float = 0.0
+    mlAttackTypeProbabilities: Dict[str, float] = {}
+    ruleScore: Optional[float] = None
+    finalRiskScore: Optional[float] = None
+    finalVerdict: Optional[str] = None
+    fusionReason: Optional[str] = None
+    decisionSource: Optional[str] = None
+    rawEvidenceOverrideApplied: bool = False
+    preOverrideVerdict: Optional[str] = None
+    preOverrideAttackType: Optional[str] = None
+    preOverrideRiskScore: Optional[float] = None
+    worstChunk: Optional[str] = None
+    chunkCount: int = 0
+    modelVersion: Optional[str] = None
+    modelSequenceLength: Optional[int] = None
 class GenerateFixRequest(BaseModel): scanId: str; language: str
 class GenerateFixResponse(BaseModel):
     vulnerabilityType: str; fixType: str; fixStrategy: str; explanation: str; fixedCode: str
