@@ -48,7 +48,12 @@ if str(BACKEND_DIR) not in sys.path:
 from app.vectorization.vocabulary import build_fixed_vocabulary, save_vocabulary
 from app.preprocessing.code_cleaner import clean_code
 from app.preprocessing.tokenizer import tokenize_code
-from app.preprocessing.normalizer import normalize_tokens
+from app.preprocessing.normalizer import (
+    normalize_tokens,
+    extract_safe_returning_funcs,
+    extract_numeric_returning_funcs,
+    extract_db_returning_funcs,
+)
 
 ATTACK_TO_ID = {"NONE": 0, "IN_BAND": 1, "BLIND": 2, "SECOND_ORDER": 3}
 ID_TO_ATTACK = {v: k for k, v in ATTACK_TO_ID.items()}
@@ -88,7 +93,17 @@ def read_manifest(root: Path) -> Dict[str, Tuple[str, str]]:
 
 
 def normalize_to_ids(code: str, vocab: dict, sequence_length: int) -> Tuple[np.ndarray, Tuple[str, ...], int, int, bool]:
-    tokens = normalize_tokens(tokenize_code(clean_code(code)))
+    # V18: training export must use the same file-level semantic context as
+    # runtime scanning.  Earlier exports normalized each sample without helper
+    # propagation, so saved-segment/DB-loaded helper flows were often invisible
+    # to the model even though the backend normalizer could emit them at runtime.
+    raw_tokens = tokenize_code(clean_code(code))
+    tokens = normalize_tokens(
+        raw_tokens,
+        extra_safe_funcs=extract_safe_returning_funcs(raw_tokens),
+        extra_numeric_funcs=extract_numeric_returning_funcs(raw_tokens),
+        extra_db_loaded_funcs=extract_db_returning_funcs(raw_tokens),
+    )
     sig = tuple(tokens)
     unk_id = int(vocab.get("UNK", 1))
     pad_id = int(vocab.get("PAD", 0))

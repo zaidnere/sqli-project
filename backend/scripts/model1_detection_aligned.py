@@ -1,4 +1,4 @@
-# Auto-exported from model1_detection_aligned.ipynb — V17 type-balanced-flow
+# Auto-exported from model1_detection_aligned.ipynb — V18 semantic-flow-input
 # Run in Google Colab after uploading vocabulary.json and training_data.npz.
 
 # # Model 1 Detection — ML-primary v17
@@ -189,8 +189,8 @@ print("\nSaved dataset_profile.json")
 # SECTION 2 — Architecture constants and training hyperparameters
 # CRITICAL: architecture values must match backend inference.
 # ─────────────────────────────────────────────────────────────────────────────
-MODEL_VERSION = "model1-cnn-bilstm-dual-head-js-second-order-focused-v17"
-NORMALIZER_VERSION = "semantic-normalizer-v2"  # update if backend normalizer semantics change
+MODEL_VERSION = "model1-cnn-bilstm-dual-head-semantic-flow-v18"
+NORMALIZER_VERSION = "semantic-normalizer-v18-flow"  # update if backend normalizer semantics change
 DATASET_VERSION = DATASET_PROFILE.get("vocabulary_sha256", "unknown")[:12]
 
 EMBED_DIM        = 64

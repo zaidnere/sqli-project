@@ -1006,180 +1006,6 @@ _DB_LIKE_NAMES = {
     "pdo", "mysqli", "stmt", "statement",
 }
 
-
-# V18 semantic second-order helpers.
-# These helpers identify values that are *not* ordinary user input but stored
-# SQL syntax fragments loaded from DB/config/cache/saved-segment objects.  The
-# goal is to give the CNN+BiLSTM a clear source→syntax signal instead of asking
-# it to infer this flow only from generic VAR/PROPERTY placeholders.
-_SQL_FRAGMENT_NAME_HINTS = (
-    "where_clause", "wherefragment", "where_fragment", "filter_sql", "filtersql",
-    "query_sql", "querysql", "sql_text", "sqltext", "sql_body", "sqlbody",
-    "sql_fragment", "sqlfragment", "fragment", "predicate", "condition",
-    "order_clause", "orderclause", "order_expression", "orderexpression",
-    "saved_filter", "savedfilter", "saved_segment", "savedsegment", "segment",
-    "cached_filter", "cachedfilter", "config_filter", "configfilter",
-)
-
-_SEGMENT_OBJECT_HINTS = (
-    "segment", "segments", "savedsegment", "savedsegments", "savedfilter",
-    "savedfilters", "filter", "filters", "config", "settings", "cache", "cached",
-    "row", "record", "profile", "rule", "rules",
-)
-
-
-def _norm_name(token: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", token.lower())
-
-
-def _looks_like_sql_fragment_name(token: str) -> bool:
-    if not token:
-        return False
-    low = token.lower()
-    norm = _norm_name(token)
-    return any(h in low or _norm_name(h) in norm for h in _SQL_FRAGMENT_NAME_HINTS)
-
-
-def _looks_like_saved_segment_object(token: str) -> bool:
-    if not token:
-        return False
-    norm = _norm_name(token)
-    return any(h in norm for h in _SEGMENT_OBJECT_HINTS)
-
-
-def _stmt_slice_after_equals(tokens: list[str], eq_idx: int, limit: int = 80) -> list[tuple[int, str]]:
-    """Return RHS tokens for a simple assignment, stopping at a clear boundary."""
-    out: list[tuple[int, str]] = []
-    depth = 0
-    stop_kw = {"def", "class", "function", "return", "if", "else", "for", "while", "try", "catch"}
-    i = eq_idx + 1
-    while i < len(tokens) and i <= eq_idx + limit:
-        t = tokens[i]
-        if t in ("(", "[", "{"):
-            depth += 1
-        elif t in (")", "]", "}"):
-            depth -= 1
-            if depth < 0:
-                break
-        if depth == 0:
-            if t in (";", "\n"):
-                break
-            if i > eq_idx + 1 and t == "=":
-                prev_t = tokens[i - 1] if i > 0 else None
-                next_t = tokens[i + 1] if i + 1 < len(tokens) else None
-                if prev_t not in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^") and next_t != "=":
-                    break
-            if i > eq_idx + 1 and t in stop_kw:
-                break
-        out.append((i, t))
-        i += 1
-    return out
-
-
-def _rhs_reads_sqlish_property_from_tainted_object(tokens: list[str], eq_idx: int, tainted_objects: set[str]) -> bool:
-    """x = row.where_clause / segment?.where_clause / config['filter_sql']."""
-    if not tainted_objects:
-        return False
-    rhs = _stmt_slice_after_equals(tokens, eq_idx)
-    for off, t in rhs:
-        if t not in tainted_objects:
-            continue
-        # row["where_clause"] or row['sql_fragment']
-        if off + 3 < len(tokens) and tokens[off + 1] == "[" and _looks_like_sql_fragment_name(tokens[off + 2]):
-            return True
-        # row.where_clause, segment?.where_clause, row->where_clause
-        j = off + 1
-        while j < len(tokens) and tokens[j] in ("?", ".", "->"):
-            if tokens[j] in (".", "->") and j + 1 < len(tokens) and _looks_like_sql_fragment_name(tokens[j + 1]):
-                return True
-            j += 1
-    return False
-
-
-def _rhs_looks_like_saved_segment_load(tokens: list[str], eq_idx: int, db_returning_funcs: set[str]) -> bool:
-    """x = await this.load(...), x = await repo.loadSegment(...), x = await savedSegments.get(...)."""
-    rhs = _stmt_slice_after_equals(tokens, eq_idx)
-    names = [t for _, t in rhs if is_identifier(t)]
-    if any(t in db_returning_funcs for t in names):
-        return True
-    joined = " ".join(names).lower()
-    if any(h in joined for h in ("saved", "segment", "filter", "config", "cache")):
-        if any(t in {"get", "load", "find", "fetch", "read", "query", "queryone"} for t in [x.lower() for x in names]):
-            return True
-    return False
-
-
-def _detect_stored_sql_fragment_assignment(tokens: list[str], eq_idx: int, tainted_objects: set[str], db_returning_funcs: set[str]) -> bool:
-    """True when an assignment extracts a stored SQL-syntax fragment."""
-    lhs_positions = _collect_lhs_positions(tokens, eq_idx)
-    lhs_names = {tokens[p] for p in lhs_positions if p < len(tokens)}
-    lhs_sqlish = any(_looks_like_sql_fragment_name(x) for x in lhs_names)
-
-    if _rhs_reads_sqlish_property_from_tainted_object(tokens, eq_idx, tainted_objects):
-        return True
-
-    rhs = _stmt_slice_after_equals(tokens, eq_idx)
-    rhs_names = {t for _, t in rhs if is_identifier(t)}
-    if lhs_sqlish and (rhs_names & tainted_objects):
-        return True
-    if lhs_sqlish and any(t in db_returning_funcs for t in rhs_names):
-        return True
-    return False
-
-
-def _detect_saved_segment_object_assignment(tokens: list[str], eq_idx: int, db_returning_funcs: set[str]) -> bool:
-    lhs_positions = _collect_lhs_positions(tokens, eq_idx)
-    lhs_names = {tokens[p] for p in lhs_positions if p < len(tokens)}
-    lhs_segmentish = any(_looks_like_saved_segment_object(x) for x in lhs_names)
-    return lhs_segmentish and _rhs_looks_like_saved_segment_load(tokens, eq_idx, db_returning_funcs)
-
-
-def _stored_fragment_used_in_sql_syntax(tokens: list[str], stored_vars: set[str]) -> bool:
-    """Detect stored fragment interpolated/concatenated into SQL and later executed."""
-    if not stored_vars:
-        return False
-    n = len(tokens)
-    sql_vars: set[str] = set()
-
-    def stmt_has_exec_after(start: int, name: str) -> bool:
-        for k in range(start, min(n, start + 120)):
-            if tokens[k] in {"execute", "executescript", "query", "raw", "run", "all", "get", "exec", "executeQuery", "executeUpdate"} and k + 1 < n and tokens[k + 1] == "(":
-                # Either the SQL variable is in the first argument or the sink itself receives a template/concat.
-                window = tokens[k:min(n, k + 30)]
-                if name in window or any(v in window for v in stored_vars):
-                    return True
-        return False
-
-    for i, t in enumerate(tokens):
-        # const sql = `... ${whereClause} ...`
-        if t == "=":
-            lhs_positions = _collect_lhs_positions(tokens, i)
-            lhs_names = {tokens[p] for p in lhs_positions if p < len(tokens)}
-            rhs = _stmt_slice_after_equals(tokens, i, 120)
-            rhs_tokens = [x for _, x in rhs]
-            rhs_has_sql = any(is_sql_string(x) or is_fstring_sql(x) for x in rhs_tokens)
-            rhs_has_stored = False
-            for _, rt in rhs:
-                if rt in stored_vars:
-                    rhs_has_stored = True
-                if is_fstring_sql(rt) and (_extract_interpolated_vars(rt) & stored_vars):
-                    rhs_has_stored = True
-            if rhs_has_sql and rhs_has_stored:
-                sql_vars.update(lhs_names)
-                continue
-        # Direct execution of template/concat containing the stored fragment.
-        if t in {"execute", "executescript", "query", "raw", "run", "all", "get", "exec", "executeQuery", "executeUpdate"} and i + 1 < n and tokens[i + 1] == "(":
-            window = tokens[i:min(n, i + 60)]
-            if any(v in window for v in stored_vars):
-                return True
-            if any(is_fstring_sql(x) and (_extract_interpolated_vars(x) & stored_vars) for x in window):
-                return True
-
-    for sv in sql_vars:
-        if stmt_has_exec_after(0, sv):
-            return True
-    return False
-
 # PHP global functions that load DB rows (no `.` receiver).
 # These are called as `mysqli_fetch_assoc($r)` not `$conn.fetch_assoc($r)`.
 _PHP_FETCH_FUNCS = {
@@ -2072,7 +1898,7 @@ def normalize_tokens(
     """
     Normalize a token list into a semantic sequence.
     Injects UNSAFE_EXEC, SAFE_EXEC, SQL_CONCAT signals where detected.
-    Also injects flow signals: WHITELIST_VAR, DB_LOADED_VAR, BOOLEAN_SINK, STORED_SQL_FRAGMENT, SQL_FRAGMENT_TO_SYNTAX, SECOND_ORDER_FLOW.
+    Also injects flow signals: WHITELIST_VAR, DB_LOADED_VAR, BOOLEAN_SINK.
 
     extra_safe_funcs / extra_numeric_funcs / extra_db_loaded_funcs:
     file-level helper facts. Calls to these helpers on the RHS of an
@@ -2104,8 +1930,6 @@ def normalize_tokens(
     safe_numeric_vars: set[str] = set()      # var = int(x) / min(x, ...) / arithmetic
     safe_fragment_vars: set[str] = set()     # list/array of static SQL fragments with bound params
     static_sql_vars: set[str] = set()        # var assigned from static SQL literal/script only
-    stored_sql_fragment_vars: set[str] = set()  # var/property extracted from saved/config/cache/DB SQL syntax
-    saved_segment_object_vars: set[str] = set() # row/segment objects that may contain SQL fragment fields
 
     # ── Pre-scan: identify "safe-returning" helper functions ──────────────
     # A function is safe-returning if its body contains an assignment that
@@ -2191,10 +2015,6 @@ def normalize_tokens(
             signal = "SAFE_PLACEHOLDER_LIST"
         elif _detect_whitelist_assignment(tokens, idx):
             signal = "WHITELIST_VAR"
-        elif _detect_stored_sql_fragment_assignment(tokens, idx, db_loaded_vars | saved_segment_object_vars, db_returning_funcs):
-            signal = "STORED_SQL_FRAGMENT"
-        elif _detect_saved_segment_object_assignment(tokens, idx, db_returning_funcs):
-            signal = "SAVED_SEGMENT"
         elif _detect_db_loaded_assignment(tokens, idx) or _rhs_uses_db_loaded_var(tokens, idx, db_loaded_vars):
             signal = "DB_LOADED_VAR"
         elif _detect_safe_sql_fragment_list_assignment(tokens, idx):
@@ -2243,14 +2063,6 @@ def normalize_tokens(
             elif signal == "WHITELIST_VAR":
                 whitelisted_vars.add(name)
             elif signal == "DB_LOADED_VAR":
-                db_loaded_vars.add(name)
-                db_loaded_var_pos[name] = idx
-            elif signal == "SAVED_SEGMENT":
-                saved_segment_object_vars.add(name)
-                db_loaded_vars.add(name)
-                db_loaded_var_pos[name] = idx
-            elif signal == "STORED_SQL_FRAGMENT":
-                stored_sql_fragment_vars.add(name)
                 db_loaded_vars.add(name)
                 db_loaded_var_pos[name] = idx
             elif signal == "SAFE_NUMERIC_VAR":
@@ -2321,11 +2133,10 @@ def normalize_tokens(
                 # numeric / safe SQL-fragment list). Treat this as a static SQL string —
                 # the f-string brackets just hold safe values.
                 raw_norm.append("SQL_STRING")
-            elif _extract_interpolated_vars(token) & (db_loaded_vars | stored_sql_fragment_vars):
-                # DB/config/cache-loaded value embedded in a later SQL string:
-                # second-order injection source. Do NOT treat it as safe.
+            elif _extract_interpolated_vars(token) & db_loaded_vars:
+                # DB-loaded value embedded in a later SQL string: second-order
+                # injection source. Do NOT treat DB_LOADED_VAR as safe.
                 raw_norm.append("FSTRING_SQL")
-                raw_norm.append("SQL_FRAGMENT_TO_SYNTAX")
                 raw_norm.append("SECOND_ORDER_FLOW")
             else:
                 raw_norm.append("FSTRING_SQL")
@@ -2477,7 +2288,7 @@ def normalize_tokens(
             safe_var_placeholders.add(property_map[name])
 
     db_loaded_placeholders: set[str] = set()
-    for name in db_loaded_vars | stored_sql_fragment_vars:
+    for name in db_loaded_vars:
         if name in var_map:
             db_loaded_placeholders.add(var_map[name])
         if name in property_map:
@@ -2498,7 +2309,6 @@ def normalize_tokens(
     def _append_concat_signal(var_idx: int | None = None) -> None:
         normalized.append("SQL_CONCAT")
         if var_idx is not None and _is_db_loaded_var(var_idx):
-            normalized.append("SQL_FRAGMENT_TO_SYNTAX")
             normalized.append("SECOND_ORDER_FLOW")
 
     for i, tok in enumerate(raw_norm):
@@ -2612,10 +2422,7 @@ def normalize_tokens(
     if _detect_boolean_sink(tokens):
         normalized.append("BOOLEAN_SINK")
 
-    if _detect_second_order_flow(tokens, db_loaded_var_pos) or _stored_fragment_used_in_sql_syntax(tokens, stored_sql_fragment_vars):
-        if stored_sql_fragment_vars:
-            normalized.append("STORED_SQL_FRAGMENT")
-            normalized.append("SQL_FRAGMENT_TO_SYNTAX")
+    if _detect_second_order_flow(tokens, db_loaded_var_pos):
         normalized.append("SECOND_ORDER_FLOW")
 
     return normalized

@@ -1,155 +1,155 @@
 {
-  "created_at": "2026-05-09T14:02:10.542998Z",
-  "n_samples": 2059,
+  "created_at": "2026-05-09T16:57:16.775082Z",
+  "n_samples": 2177,
   "sequence_length": 256,
-  "vocabulary_size": 179,
-  "vocabulary_sha256": "ae3141d41fb1d93e33d54e6571c570e1e6286f079afdb1c2440a5d439632e92f",
+  "vocabulary_size": 189,
+  "vocabulary_sha256": "ca61dd07150bbcb7c4b4e4a0dbd17b6c97fca2cd42063f16e6557b17335a6008",
   "pad_id": 0,
   "unk_id": 1,
   "verdict_counts": {
-    "SAFE": 542,
-    "VULNERABLE": 1517
+    "SAFE": 552,
+    "VULNERABLE": 1625
   },
   "attack_type_counts": {
-    "NONE": 542,
-    "IN_BAND": 611,
-    "BLIND": 451,
-    "SECOND_ORDER": 455
+    "NONE": 552,
+    "IN_BAND": 609,
+    "BLIND": 455,
+    "SECOND_ORDER": 561
   },
   "language_counts": {
-    "javascript": 752,
-    "php": 634,
-    "python": 417,
-    "java": 256
+    "python": 439,
+    "javascript": 844,
+    "java": 256,
+    "php": 638
   },
   "sample_family_counts": {
-    "v17_flow_vuln:SECOND_ORDER": 300,
-    "v17_flow_vuln:BLIND": 411,
-    "v17_flow_vuln:IN_BAND": 570,
-    "v17_flow_safe:python": 162,
-    "v17_flow_safe:java": 37,
-    "baseline:NONE": 40,
-    "v17_flow_safe:php": 156,
-    "v17_js_second_order_focus": 118,
-    "v17_flow_safe:javascript": 127,
-    "v17_js_safe_sequelize_focus": 20,
-    "baseline:SECOND_ORDER": 37,
-    "baseline:IN_BAND": 41,
-    "baseline:BLIND": 40
+    "v18_flow_safe:python": 166,
+    "v18_flow_vuln:SECOND_ORDER": 400,
+    "v18_js_second_order_focus": 121,
+    "v18_flow_vuln:BLIND": 415,
+    "v18_flow_safe:php": 157,
+    "v18_flow_vuln:IN_BAND": 570,
+    "baseline:SECOND_ORDER": 40,
+    "baseline:NONE": 37,
+    "v18_flow_safe:javascript": 143,
+    "v18_flow_safe:java": 37,
+    "baseline:IN_BAND": 39,
+    "baseline:BLIND": 40,
+    "v18_js_safe_sequelize_focus": 12
   },
-  "avg_sample_weight_binary": 3.7409424781799316,
-  "avg_sample_weight_type": 4.663623332977295,
+  "avg_sample_weight_binary": 3.7244832515716553,
+  "avg_sample_weight_type": 4.574275970458984,
   "max_sample_weight_binary": 5.199999809265137,
   "max_sample_weight_type": 7.599999904632568,
-  "avg_non_pad_length": 99.75716367168529,
+  "avg_non_pad_length": 101.00459347726229,
   "max_non_pad_length": 256,
-  "min_non_pad_length": 25,
-  "padded_samples": 2056,
+  "min_non_pad_length": 36,
+  "padded_samples": 2174,
   "truncated_samples": 3,
-  "truncation_rate": 0.0014570179698882952,
-  "unk_token_count": 3019,
-  "unk_rate": 0.014698149951314509,
+  "truncation_rate": 0.0013780431786862655,
+  "unk_token_count": 0,
+  "unk_rate": 0.0,
   "duplicate_sequence_count": 0,
   "top_tokens": [
     [
       "=",
-      14867
+      15795
     ],
     [
       ";",
-      14653
+      15571
     ],
     [
       "(",
-      13403
+      14175
     ],
     [
       ")",
-      13401
+      14174
     ],
     [
       ".",
-      11284
+      12145
     ],
     [
       "STRING",
-      9444
+      9709
     ],
     [
       ",",
-      6637
+      7156
     ],
     [
       "NUMBER",
-      5878
+      6124
     ],
     [
       "VAR_3",
-      5174
+      5426
     ],
     [
       "{",
-      4805
+      5121
     ],
     [
       "}",
-      4799
+      5115
     ],
     [
       "VAR_1",
-      4699
+      5069
     ],
     [
       "VAR_4",
-      4382
+      4740
     ],
     [
       "VAR_2",
-      4210
+      4456
     ],
     [
       "VAR_5",
-      3870
+      4099
     ],
     [
       "VAR_6",
-      3555
+      3780
     ],
     [
       "[",
-      3280
+      3519
     ],
     [
       "]",
-      3280
+      3519
     ],
     [
       "VAR_7",
-      3267
-    ],
-    [
-      "SAFE_NUMERIC_VAR",
-      3097
+      3515
     ],
     [
       ":",
-      3051
+      3241
     ],
     [
-      "UNK",
-      3019
+      "SAFE_NUMERIC_VAR",
+      3239
     ],
     [
       "VAR_8",
-      2943
-    ],
-    [
-      "VAR_0",
-      2659
+      3190
     ],
     [
       "VAR_9",
-      2623
+      2872
+    ],
+    [
+      "VAR_0",
+      2790
+    ],
+    [
+      "return",
+      2716
     ]
   ]
 }

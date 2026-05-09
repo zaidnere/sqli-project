@@ -1,14 +1,14 @@
 r"""
-Export Model-1 V17 focused generalization training data for Google Colab.
+Export Model-1 V18 focused generalization training data for Google Colab.
 This file replaces backend/scripts/export_for_colab.py with the SAME name.
 
-Why V17 exists
+Why V18 exists
 -------------
 V9 made the model much more ML-first and balanced, but the adversarial real-world suite exposed two important generalization gaps:
   1. time-based SQLi was detected as vulnerable but typed as IN_BAND instead of BLIND;
   2. PHP callable-array aliases to PDO/mysqli query were missed as SQL execution sinks.
 
-V17 is a focused follow-up to V16. It keeps V17 stable and adds only two narrow generalization families: SAFE Sequelize replacements/bindings and JavaScript saved/cache/config segment SECOND_ORDER flow: keep V9's SAFE-flow knowledge while adding generated variants that teach the model time-delay BLIND behavior and callable DB alias sinks without copying benchmark files:
+V18 is a focused follow-up to V16. It keeps V18 stable and adds only two narrow generalization families: SAFE Sequelize replacements/bindings and JavaScript saved/cache/config segment SECOND_ORDER flow: keep V9's SAFE-flow knowledge while adding generated variants that teach the model time-delay BLIND behavior and callable DB alias sinks without copying benchmark files:
   SAFE flow examples:
     user input -> allowlist/map/numeric cast/bindings -> SQL syntax/params -> safe execute
   VULNERABLE flow examples:
@@ -174,22 +174,22 @@ def audit_focus_from_csv(paths: List[str]) -> Dict[str, int]:
                 exp_v = (row.get("expected_verdict") or row.get("expected_label") or row.get("Expected") or "SAFE").strip().upper()
                 exp_t = (row.get("expected_attack_type") or row.get("expected_type") or row.get("Expected Type") or "NONE").strip().upper()
                 # Audit CSVs contain ml_predicted_*; API/direct test-result CSVs contain actual_* only.
-                # For V17 focusing, actual_* is enough to learn which adversarial family failed,
+                # For V18 focusing, actual_* is enough to learn which adversarial family failed,
                 # while still never copying benchmark source code.
                 ml_v = (row.get("ml_predicted_verdict") or row.get("actual_verdict") or row.get("Actual") or "").strip().upper()
                 ml_t = (row.get("ml_predicted_attack_type") or row.get("actual_type") or row.get("Actual Type") or "").strip().upper()
                 lang = file_name.split("/")[0].strip().lower() or "unknown"
                 fam = _family_from_file(file_name)
 
-                # The V17 target: balance SAFE specificity with vulnerable recall and attack-type accuracy.
+                # The V18 target: balance SAFE specificity with vulnerable recall and attack-type accuracy.
                 if exp_v == "SAFE" and ml_v != "SAFE":
-                    # V17 treats both VULNERABLE and SUSPICIOUS predictions on SAFE samples as hard-SAFE focus rows.
+                    # V18 treats both VULNERABLE and SUSPICIOUS predictions on SAFE samples as hard-SAFE focus rows.
                     # This captures named-JDBC/JPA and comments-only false positives without copying benchmark code.
                     counts["NONE"] += 1
                     counts[f"{lang}:NONE"] += 1
                     counts[fam] += 2
                 elif exp_v == "VULNERABLE" and (ml_v != "VULNERABLE" or ml_t != exp_t):
-                    # V17 gives stronger focus to vulnerable misses and type errors.
+                    # V18 gives stronger focus to vulnerable misses and type errors.
                     counts[exp_t] += 3
                     counts[f"{lang}:{exp_t}"] += 3
                     counts[f"type:{exp_t}"] += 2
@@ -203,7 +203,7 @@ def audit_focus_from_csv(paths: List[str]) -> Dict[str, int]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# V17 focused calibration families
+# V18 focused calibration families
 # ─────────────────────────────────────────────────────────────────────────────
 
 def py_safe_allowlist(r):
@@ -699,7 +699,7 @@ function run_{ident(r, 'fn')}($pdo, $id) {{
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# V17 adversarial families: time-based BLIND SQLi and PHP callable DB aliases.
+# V18 adversarial families: time-based BLIND SQLi and PHP callable DB aliases.
 # These are generated variants, not copied benchmark files. They teach the model
 # that a delay expression in executed raw SQL is BLIND, not IN_BAND, and that a
 # callable alias to query/exec remains a SQL sink.
@@ -862,7 +862,7 @@ function safe_{ident(r, 'fn')}($pdo, $q) {{
 
 
 
-# Extra V17 time-delay BLIND variants. These use different syntax forms so the
+# Extra V18 time-delay BLIND variants. These use different syntax forms so the
 # model learns the semantic FLOW: raw input reaches SQL syntax whose outcome is
 # timing/boolean delay, therefore BLIND even when no rows are displayed.
 def py_blind_time_or_sleep_raw(r):
@@ -957,7 +957,7 @@ function audit_{ident(r, 'fn')}($mysqli, $q) {{
 ?>'''
 
 
-# Extra V17 callable alias variants and hard counterexamples.
+# Extra V18 callable alias variants and hard counterexamples.
 def php_vuln_callable_method_var_query_alias(r):
     return f'''<?php
 function find_{ident(r, 'fn')}($pdo, $q) {{
@@ -1009,7 +1009,7 @@ function safe_{ident(r, 'fn')}($pdo, $q) {{
 
 
 
-# V17 hard-SAFE no-sink/comment/string-only families.
+# V18 hard-SAFE no-sink/comment/string-only families.
 # These teach the model that SQL-looking payloads, SLEEP/WAITFOR tokens,
 # SELECT/UNION strings and DB method names are not vulnerabilities unless the
 # SQL-like value reaches a real DB execution sink.
@@ -1114,9 +1114,9 @@ function wait_{fname}($request) {{
 
 
 # -----------------------------
-# V17 focused generalization families
+# V18 focused generalization families
 # -----------------------------
-# Generated families only: no benchmark source is copied. They target V17 gaps:
+# Generated families only: no benchmark source is copied. They target V18 gaps:
 # Python no-sink SQL-looking strings/comments, Java safe named params, and PHP
 # time-delay BLIND flows.
 
@@ -1220,7 +1220,7 @@ function delay_{fname}($pdo, $q) {{
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# V17 focused flow families.
+# V18 focused flow families.
 # Goal: fix attack-type overconfidence without adding runtime rules.
 # These generated variants teach the model the semantic difference between:
 # - direct raw SQL reaching a sink => IN_BAND
@@ -1359,10 +1359,10 @@ class {cls} {{
 
 
 
-# V17 extra SAFE Sequelize replacement families.
+# V18 extra SAFE Sequelize replacement families.
 # These teach the model that named/array replacements are parameter binding,
 # even when the query contains suspicious-looking SQL keywords in nearby decoys.
-def js_safe_sequelize_replacements_named_v17(r):
+def js_safe_sequelize_replacements_named_v18(r):
     fname = ident(r, "audit")
     return f"""
 async function {fname}(req, sequelize, QueryTypes) {{
@@ -1377,7 +1377,7 @@ async function {fname}(req, sequelize, QueryTypes) {{
 """
 
 
-def js_safe_sequelize_replacements_array_v17(r):
+def js_safe_sequelize_replacements_array_v18(r):
     fname = ident(r, "repo")
     return f"""
 async function {fname}(req, sequelize) {{
@@ -1390,7 +1390,7 @@ async function {fname}(req, sequelize) {{
 """
 
 
-def js_safe_sequelize_bind_v17(r):
+def js_safe_sequelize_bind_v18(r):
     fname = ident(r, "list")
     return f"""
 async function {fname}(req, sequelize, QueryTypes) {{
@@ -1403,10 +1403,10 @@ async function {fname}(req, sequelize, QueryTypes) {{
 """
 
 
-# V17 extra JavaScript SECOND_ORDER saved/cache/config segment flows.
+# V18 extra JavaScript SECOND_ORDER saved/cache/config segment flows.
 # The important signal is not direct request input; it is a previously stored
 # SQL fragment that later becomes SQL syntax.
-def js_second_saved_segment_repo_v17(r):
+def js_second_saved_segment_repo_v18(r):
     fname = ident(r, "runSegment")
     return f"""
 async function {fname}(req, db, segmentRepo) {{
@@ -1418,7 +1418,7 @@ async function {fname}(req, db, segmentRepo) {{
 """
 
 
-def js_second_db_loaded_segment_v17(r):
+def js_second_db_loaded_segment_v18(r):
     fname = ident(r, "saved")
     return f"""
 async function {fname}(req, db) {{
@@ -1430,7 +1430,7 @@ async function {fname}(req, db) {{
 """
 
 
-def js_second_config_order_v17(r):
+def js_second_config_order_v18(r):
     fname = ident(r, "report")
     return f"""
 async function {fname}(req, db, config) {{
@@ -1441,10 +1441,10 @@ async function {fname}(req, db, config) {{
 """
 
 
-# V17 extra JavaScript SECOND_ORDER saved-segment variants.
+# V18 extra JavaScript SECOND_ORDER saved-segment variants.
 # These teach the model that a value is SECOND_ORDER only when a saved/cache/config/DB
 # fragment becomes SQL syntax later, not when raw request input is directly concatenated.
-def js_second_saved_segment_runner_v17(r):
+def js_second_saved_segment_runner_v18(r):
     fname = ident(r, "runSavedSegment")
     return f"""
 async function {fname}(req, db, savedSegments) {{
@@ -1457,7 +1457,7 @@ async function {fname}(req, db, savedSegments) {{
 """
 
 
-def js_second_cached_filter_runner_v17(r):
+def js_second_cached_filter_runner_v18(r):
     fname = ident(r, "runCachedFilter")
     return f"""
 async function {fname}(req, db, cache) {{
@@ -1470,7 +1470,7 @@ async function {fname}(req, db, cache) {{
 """
 
 
-def js_second_config_segment_runner_v17(r):
+def js_second_config_segment_runner_v18(r):
     fname = ident(r, "runConfigSegment")
     return f"""
 async function {fname}(req, db, settings) {{
@@ -1482,7 +1482,7 @@ async function {fname}(req, db, settings) {{
 """
 
 
-def js_second_db_loaded_where_runner_v17(r):
+def js_second_db_loaded_where_runner_v18(r):
     fname = ident(r, "executeSavedSearch")
     return f"""
 async function {fname}(req, db) {{
@@ -1494,7 +1494,7 @@ async function {fname}(req, db) {{
 """
 
 
-def js_second_profile_segment_runner_v17(r):
+def js_second_profile_segment_runner_v18(r):
     fname = ident(r, "runProfileReport")
     return f"""
 async function {fname}(req, db, profiles) {{
@@ -1506,12 +1506,12 @@ async function {fname}(req, db, profiles) {{
 """
 
 
-# V17 extra JavaScript SECOND_ORDER saved-segment variants.
+# V18 extra JavaScript SECOND_ORDER saved-segment variants.
 # These are intentionally generated variants, not copied benchmark files.
 # Goal: teach that a saved segment/filter loaded from a repo/cache/config/database
 # and later appended into SQL syntax is SECOND_ORDER, even when the final sink
 # uses normal db.all/db.query calls and bound tenant parameters.
-def js_second_saved_segment_runner_v17_route(r):
+def js_second_saved_segment_runner_v18_route(r):
     fname = ident(r, "applySavedSegment")
     repo = r.choice(["segmentStore", "savedSegmentService", "filtersRepo", "savedSegments"])
     method = r.choice(["loadForUser", "getForTenant", "findSegment", "readSavedSegment"])
@@ -1530,7 +1530,7 @@ async function {fname}(req, db, {repo}) {{
 """
 
 
-def js_second_saved_filter_runner_v17_alias(r):
+def js_second_saved_filter_runner_v18_alias(r):
     fname = ident(r, "runSavedFilter")
     loader = r.choice(["loadSavedFilter", "fetchSavedFilter", "getStoredPredicate"])
     field = r.choice(["predicate", "where", "sql", "fragment"])
@@ -1550,7 +1550,7 @@ async function {fname}(req, db) {{
 """
 
 
-def js_second_cached_segment_service_v17(r):
+def js_second_cached_segment_service_v18(r):
     fname = ident(r, "executeCachedSegment")
     cache = r.choice(["redis", "cache", "segmentCache"])
     sink = r.choice(["all", "query", "execute"])
@@ -1566,7 +1566,7 @@ async function {fname}(req, db, {cache}) {{
 """
 
 
-def js_second_saved_segment_runner_v17_decoys(r):
+def js_second_saved_segment_runner_v18_decoys(r):
     fname = ident(r, "searchWithSavedSegment")
     sink = r.choice(["all", "query", "execute"])
     return f"""
@@ -1582,7 +1582,7 @@ async function {fname}(req, db, savedSegments) {{
 
 SAFE_FACTORIES = {
     "python": [py_safe_allowlist, py_safe_dict_map_table, py_safe_placeholder_list, py_safe_numeric_bounds, py_safe_sqlalchemy_params, py_safe_comments_only_hard, py_safe_time_keyword_not_sql, py_safe_docstring_payload_no_sink, py_safe_payload_constant_log_only, py_safe_comments_only_more_strict],
-    "javascript": [js_safe_sequelize_replacements, js_safe_sequelize_replacements_named_v17, js_safe_sequelize_replacements_array_v17, js_safe_sequelize_bind_v17, js_safe_knex_params, js_safe_allowlist_order, js_safe_placeholder_list, js_safe_comments_only_hard, js_safe_time_keyword_not_sql],
+    "javascript": [js_safe_sequelize_replacements, js_safe_sequelize_replacements_named_v18, js_safe_sequelize_replacements_array_v18, js_safe_sequelize_bind_v18, js_safe_knex_params, js_safe_allowlist_order, js_safe_placeholder_list, js_safe_comments_only_hard, js_safe_time_keyword_not_sql],
     "java": [java_safe_jdbctemplate, java_safe_jpa_setparameter, java_safe_prepared_order, java_safe_comments_only_hard, java_safe_time_keyword_not_sql, java_safe_named_jdbc_params_more, java_safe_jpa_named_params_more, java_named_jdbc_params_decoy_more],
     "php": [php_safe_laravel_bindings, php_safe_pdo_prepare, php_safe_array_allowlist, php_safe_placeholder_list, php_safe_callable_non_db_alias, php_safe_callable_prepare_execute, php_safe_callable_query_literal, php_safe_callable_prepared_alias_with_raw_decoy, php_safe_comments_only_hard, php_safe_time_keyword_not_sql],
 }
@@ -1596,7 +1596,7 @@ VULN_FACTORIES = {
     "javascript": {
         "IN_BAND": [js_vuln_sequelize_raw, js_vuln_exec_alias, js_vuln_multi_query_one_unsafe, js_vuln_raw_order_despite_set, js_vuln_joined_ids, js_inband_template_direct_not_stored],
         "BLIND": [js_blind_time_sleep, js_blind_time_if_sleep, js_blind_time_benchmark_concat, js_blind_time_waitfor_template, js_blind_count_helper_direct, js_blind_rows_length_direct],
-        "SECOND_ORDER": [js_second_cached_fragment_typed, js_second_saved_segment_repo_v17, js_second_db_loaded_segment_v17, js_second_config_order_v17, js_second_saved_segment_runner_v17, js_second_cached_filter_runner_v17, js_second_config_segment_runner_v17, js_second_db_loaded_where_runner_v17, js_second_profile_segment_runner_v17],
+        "SECOND_ORDER": [js_second_cached_fragment_typed, js_second_saved_segment_repo_v18, js_second_db_loaded_segment_v18, js_second_config_order_v18, js_second_saved_segment_runner_v18, js_second_cached_filter_runner_v18, js_second_config_segment_runner_v18, js_second_db_loaded_where_runner_v18, js_second_profile_segment_runner_v18],
     },
     "java": {
         "IN_BAND": [java_vuln_jdbc_raw, java_vuln_raw_order_decoy_prepared, java_vuln_multi_query_one_unsafe],
@@ -1622,9 +1622,9 @@ def v17_calibration_samples(seed: int, safe_per_family: int, hardcase_per_family
             n = safe_per_family + min(3, max(0, extra_lang // 4))
             for j in range(n):
                 code = add_noise_to_code(lang, fn(r), r, salt=seed + fi * 1000 + j)
-                yield lang, "NONE", f"v17_safe_calibration/{seed}/{lang}/{fi}/{j:04d}", code, "SAFE", True, "safe"
+                yield lang, "NONE", f"v18_safe_calibration/{seed}/{lang}/{fi}/{j:04d}", code, "SAFE", True, "safe"
 
-    # VULNERABLE: V17 keeps examples where the unsafe variable, not
+    # VULNERABLE: V18 keeps examples where the unsafe variable, not
     # the safe decoy, reaches the SQL sink. This targets V8 false negatives and
     # attack-type confusions without copying benchmark source files.
     for lang, by_type in VULN_FACTORIES.items():
@@ -1635,7 +1635,7 @@ def v17_calibration_samples(seed: int, safe_per_family: int, hardcase_per_family
                 n = hardcase_per_family + min(8, max(0, extra // 2) + max(0, recall_extra // 3))
                 for j in range(n):
                     code = add_noise_to_code(lang, fn(r), r, salt=seed + fi * 1200 + j + 17)
-                    yield lang, attack, f"v17_vuln_flow/{seed}/{lang}/{attack}/{fi}/{j:04d}", code, "VULNERABLE", True, "vuln"
+                    yield lang, attack, f"v18_vuln_flow/{seed}/{lang}/{attack}/{fi}/{j:04d}", code, "VULNERABLE", True, "vuln"
 
     # Generic BLIND + SECOND_ORDER in all languages. These strengthen type
     # discrimination: boolean return/fetchone/exists is BLIND; stored/config/db
@@ -1646,47 +1646,143 @@ def v17_calibration_samples(seed: int, safe_per_family: int, hardcase_per_family
             n = hardcase_per_family + min(8, max(0, extra // 2))
             for j in range(n):
                 code = add_noise_to_code(lang, maker(lang, r), r, salt=seed + j + len(attack) * 99)
-                yield lang, attack, f"v17_type_flow/{seed}/{lang}/{attack}/{j:04d}", code, "VULNERABLE", True, "vuln_type"
+                yield lang, attack, f"v18_type_flow/{seed}/{lang}/{attack}/{j:04d}", code, "VULNERABLE", True, "vuln_type"
 
-    # V17 focused JS SECOND_ORDER boost.
+    # V18 focused JS SECOND_ORDER boost.
     # This is intentionally narrow: the last remaining regression after V15 was
     # JavaScript saved-segment SECOND_ORDER where the model predicted SAFE/NONE.
     # We add more generated variants of saved/cache/config/db-loaded fragments
     # later used as SQL syntax, without copying benchmark source files.
     js_second_focused = [
-        js_second_saved_segment_repo_v17,
-        js_second_db_loaded_segment_v17,
-        js_second_config_order_v17,
-        js_second_saved_segment_runner_v17,
-        js_second_cached_filter_runner_v17,
-        js_second_config_segment_runner_v17,
-        js_second_db_loaded_where_runner_v17,
-        js_second_profile_segment_runner_v17,
-        js_second_saved_segment_runner_v17_route,
-        js_second_saved_filter_runner_v17_alias,
-        js_second_cached_segment_service_v17,
-        js_second_saved_segment_runner_v17_decoys,
+        js_second_saved_segment_repo_v18,
+        js_second_db_loaded_segment_v18,
+        js_second_config_order_v18,
+        js_second_saved_segment_runner_v18,
+        js_second_cached_filter_runner_v18,
+        js_second_config_segment_runner_v18,
+        js_second_db_loaded_where_runner_v18,
+        js_second_profile_segment_runner_v18,
+        js_second_saved_segment_runner_v18_route,
+        js_second_saved_filter_runner_v18_alias,
+        js_second_cached_segment_service_v18,
+        js_second_saved_segment_runner_v18_decoys,
     ]
     extra_js_second = focus.get("SECOND_ORDER", 0) + focus.get("javascript:SECOND_ORDER", 0) + focus.get("type:SECOND_ORDER", 0)
     for fi, fn in enumerate(js_second_focused):
         n = hardcase_per_family + 18 + min(16, max(0, extra_js_second // 2))
         for j in range(n):
             code = add_noise_to_code("javascript", fn(r), r, salt=seed + 90000 + fi * 500 + j)
-            yield "javascript", "SECOND_ORDER", f"v17_js_second_order_focus/{seed}/{fi}/{j:04d}", code, "VULNERABLE", True, "js_second_order_focus"
+            yield "javascript", "SECOND_ORDER", f"v18_js_second_order_focus/{seed}/{fi}/{j:04d}", code, "VULNERABLE", True, "js_second_order_focus"
 
-    # V17 keeps the SAFE Sequelize replacement calibration that V15 fixed.
+    # V18 keeps the SAFE Sequelize replacement calibration that V15 fixed.
     js_seq_safe = [
         js_safe_sequelize_replacements,
-        js_safe_sequelize_replacements_named_v17,
-        js_safe_sequelize_replacements_array_v17,
-        js_safe_sequelize_bind_v17,
+        js_safe_sequelize_replacements_named_v18,
+        js_safe_sequelize_replacements_array_v18,
+        js_safe_sequelize_bind_v18,
     ]
     for fi, fn in enumerate(js_seq_safe):
         n = safe_per_family + 6
         for j in range(n):
             code = add_noise_to_code("javascript", fn(r), r, salt=seed + 95000 + fi * 300 + j)
-            yield "javascript", "NONE", f"v17_js_safe_sequelize_focus/{seed}/{fi}/{j:04d}", code, "SAFE", True, "js_safe_sequelize_focus"
+            yield "javascript", "NONE", f"v18_js_safe_sequelize_focus/{seed}/{fi}/{j:04d}", code, "SAFE", True, "js_safe_sequelize_focus"
 
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# V18 semantic-input additions.
+# V17 failed repeatedly on the same JS saved-segment flow because the model did
+# not see a strong semantic token for "stored fragment -> SQL syntax -> DB sink".
+# V18 therefore pairs the normalizer/vocabulary change with extra generated
+# variants that exercise the new STORED_SQL_FRAGMENT / SQL_FRAGMENT_TO_SYNTAX /
+# SECOND_ORDER_FLOW tokens.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def js_second_saved_segment_semantic_v18(r):
+    fname = ident(r, "members")
+    return f"""
+class SegmentRepo {{
+  constructor(db) {{ this.db = db; }}
+  async load(ctx, id) {{
+    return this.db.get("SELECT where_clause FROM saved_segments WHERE tenant_id=? AND id=?", [ctx.tenantId, id]);
+  }}
+  async {fname}(ctx, id) {{
+    const segment = await this.load(ctx, id);
+    const whereClause = segment?.where_clause || "1=1";
+    const sql = `SELECT id,email FROM customers WHERE tenant_id=? AND ${{whereClause}} ORDER BY created_at DESC`;
+    return this.db.all(sql, [ctx.tenantId]);
+  }}
+}}
+"""
+
+
+def js_second_saved_filter_property_semantic_v18(r):
+    fname = ident(r, "run")
+    return f"""
+async function {fname}(req, db, savedFilters) {{
+  const savedFilter = await savedFilters.loadForTenant(req.user.tenantId, req.params.id);
+  const filterSql = savedFilter.sql_fragment || savedFilter.where_clause || "1=1";
+  const sql = "SELECT id,total FROM orders WHERE tenant_id=? AND " + filterSql;
+  return db.all(sql, [req.user.tenantId]);
+}}
+"""
+
+
+def js_second_cache_fragment_semantic_v18(r):
+    fname = ident(r, "audit")
+    return f"""
+async function {fname}(ctx, db, cache) {{
+  const cachedSegment = await cache.get(`segment:${{ctx.segmentId}}`);
+  const predicate = cachedSegment?.filter_sql || "1=1";
+  const sql = `SELECT id, action FROM audit_log WHERE tenant_id=? AND ${{predicate}}`;
+  return db.all(sql, [ctx.tenantId]);
+}}
+"""
+
+
+def js_second_config_fragment_semantic_v18(r):
+    fname = ident(r, "report")
+    return f"""
+async function {fname}(req, db, configService) {{
+  const config = await configService.getReportConfig(req.user.tenantId, req.params.report);
+  const orderClause = config.order_clause || "created_at DESC";
+  const sql = "SELECT id,email FROM customers WHERE tenant_id=? ORDER BY " + orderClause;
+  return db.all(sql, [req.user.tenantId]);
+}}
+"""
+
+
+def v18_calibration_samples(seed: int, safe_per_family: int, hardcase_per_family: int, focus: Dict[str, int]):
+    # Keep all V17/V15 stability families first.
+    yield from v17_calibration_samples(seed, safe_per_family, hardcase_per_family, focus)
+
+    r = random.Random(seed + 18000)
+    js_second_v18 = [
+        js_second_saved_segment_semantic_v18,
+        js_second_saved_filter_property_semantic_v18,
+        js_second_cache_fragment_semantic_v18,
+        js_second_config_fragment_semantic_v18,
+    ]
+    extra_js_second = focus.get("SECOND_ORDER", 0) + focus.get("javascript:SECOND_ORDER", 0) + focus.get("type:SECOND_ORDER", 0)
+    for fi, fn in enumerate(js_second_v18):
+        n = hardcase_per_family + 22 + min(18, max(0, extra_js_second // 2))
+        for j in range(n):
+            code = add_noise_to_code("javascript", fn(r), r, salt=seed + 180000 + fi * 700 + j)
+            yield "javascript", "SECOND_ORDER", f"v18_semantic_js_second_order/{seed}/{fi}/{j:04d}", code, "VULNERABLE", True, "v18_semantic_js_second_order"
+
+    # Preserve the SAFE Sequelize calibration that must remain green.
+    seq_safe = [
+        js_safe_sequelize_replacements,
+        js_safe_sequelize_replacements_named_v18,
+        js_safe_sequelize_replacements_array_v18,
+        js_safe_sequelize_bind_v18,
+    ] if "js_safe_sequelize_replacements_named_v18" in globals() else [js_safe_sequelize_replacements]
+    for fi, fn in enumerate(seq_safe):
+        n = safe_per_family + 8
+        for j in range(n):
+            code = add_noise_to_code("javascript", fn(r), r, salt=seed + 181000 + fi * 400 + j)
+            yield "javascript", "NONE", f"v18_safe_sequelize_guard/{seed}/{fi}/{j:04d}", code, "SAFE", True, "v18_safe_sequelize_guard"
 
 def make_profile(arrays: dict, vocab: dict, sequence_length: int, duplicates_dropped: int) -> dict:
     profile = _profile_dataset_base(arrays, vocab, sequence_length, duplicates_dropped)
@@ -1735,9 +1831,9 @@ def main() -> int:
                 family=f"baseline:{attack}",
             )
 
-    print("[3/5] Adding V17 type-balanced hard-SAFE + hard-VULNERABLE + IN_BAND/BLIND/SECOND_ORDER calibration variants...")
+    print("[3/5] Adding V18 type-balanced hard-SAFE + hard-VULNERABLE + IN_BAND/BLIND/SECOND_ORDER calibration variants...")
     for seed in args.generated_seeds:
-        for lang, attack, source_id, code, label, focused, sample_kind in v17_calibration_samples(
+        for lang, attack, source_id, code, label, focused, sample_kind in v18_calibration_samples(
             seed, args.safe_calibration_per_family, args.hardcase_per_family, focus
         ):
             if label == "SAFE":
@@ -1745,32 +1841,32 @@ def main() -> int:
                 if sample_kind == "js_safe_sequelize_focus":
                     # Preserve the V15 win: Sequelize replacements/bind must stay SAFE.
                     bw, tw = 4.2, 3.6
-                    family = "v17_js_safe_sequelize_focus"
+                    family = "v18_js_safe_sequelize_focus"
                 else:
                     bw, tw = 3.2, 2.6
-                    family = f"v17_flow_safe:{lang}"
+                    family = f"v18_flow_safe:{lang}"
             else:
-                # V17 keeps V14/V15 type balance, with a narrow JS SECOND_ORDER boost.
+                # V18 keeps V14/V15 type balance, with a narrow JS SECOND_ORDER boost.
                 if sample_kind == "js_second_order_focus":
                     bw, tw = 5.2, 7.2
-                    family = "v17_js_second_order_focus"
+                    family = "v18_js_second_order_focus"
                 elif attack == "IN_BAND":
                     # Direct raw SQL / concat / template examples must not collapse into SECOND_ORDER.
                     bw, tw = 4.2, 5.8
-                    family = f"v17_flow_vuln:{attack}"
+                    family = f"v18_flow_vuln:{attack}"
                 elif attack == "BLIND":
                     # Time/boolean/security-decision BLIND flows.
                     bw, tw = 4.6, 7.6
-                    family = f"v17_flow_vuln:{attack}"
+                    family = f"v18_flow_vuln:{attack}"
                 else:  # SECOND_ORDER
                     # General SECOND_ORDER remains lower than the focused JS variants to avoid over-predicting it globally.
                     bw, tw = 3.4, 2.8
-                    family = f"v17_flow_vuln:{attack}"
+                    family = f"v18_flow_vuln:{attack}"
             builder.add(
                 code, label, attack, lang,
                 path=f"{source_id}.{LANG_EXT[lang]}",
                 source_id=source_id,
-                suite_name="generated_v17_js_second_order_focus_calibration",
+                suite_name="generated_v18_js_second_order_focus_calibration",
                 binary_weight=bw,
                 type_weight=tw,
                 family=family,
@@ -1788,7 +1884,7 @@ def main() -> int:
     profile = make_profile(arrays, vocab, args.sequence_length, builder.duplicates_dropped)
     (out_dir / "dataset_profile.json").write_text(json.dumps(profile, indent=2, ensure_ascii=False), encoding="utf-8")
     export_info = {
-        "export_version": "model1-v17-js-second-order-focused-same-names",
+        "export_version": "model1-v18-js-second-order-focused-same-names",
         "sequence_length": args.sequence_length,
         "generated_seeds": args.generated_seeds,
         "generated_per_class_baseline": args.generated_per_class,
@@ -1797,7 +1893,7 @@ def main() -> int:
         "audit_csvs": args.audit_csv,
         "audit_focus_counts": focus,
         "anti_leakage_note": "Audit CSVs focus generated family counts only; benchmark source files are not copied.",
-        "main_goal": "V17 focused: preserve V14/V15 stability while strengthening JavaScript SECOND_ORDER saved/cache/config segment flow and preserving SAFE Sequelize replacements/bind calibration",
+        "main_goal": "V18 semantic-input: add normalizer/vocabulary tokens for stored/config/cache fragments reaching SQL syntax, then retrain the CNN+BiLSTM on those signals while preserving V14/V15/V17 stability",
         "profile": profile,
     }
     (out_dir / "export_info.json").write_text(json.dumps(export_info, indent=2, ensure_ascii=False), encoding="utf-8")

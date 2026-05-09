@@ -1,21 +1,21 @@
 {
   "strategy": "stratified_by_attack_type_and_language_when_available",
   "seed": 42,
-  "train_count": 1441,
-  "val_count": 309,
-  "test_count": 309,
-  "train_indices_sha256": "41285ae56ce47b39d0cb2150c7dd036304d3e0b6ddc0c63e70056b84d20e3c63",
-  "val_indices_sha256": "9e35d01b45053e90b860fff6c4678771e180b19dbd88442e8ec14ca9bacd6b85",
-  "test_indices_sha256": "131e114dceaec08c7181a60cb9079f17ccd071439741c56ccc0720f7e8112c5c",
+  "train_count": 1523,
+  "val_count": 327,
+  "test_count": 327,
+  "train_indices_sha256": "915e6c1224fd6036d01a5326799274c34baa3d777bd6f6d37143e4c0378da6bc",
+  "val_indices_sha256": "8ad9a6f09b98f02bbfb819a49a96fa33e75c7d4e35328060476f37e9170eb596",
+  "test_indices_sha256": "d5e1aad6ffcccac880276d068d780a9ccd39b25d106571d374acdfbe330b666a",
   "binary_class_weights": {
-    "SAFE": 2.2052242755889893,
-    "VULNERABLE": 0.8276931047439575
+    "SAFE": 2.288445472717285,
+    "VULNERABLE": 0.8170889019966125
   },
   "attack_type_class_weights": {
-    "NONE": 1.188159704208374,
-    "IN_BAND": 1.3046436309814453,
-    "BLIND": 2.006455659866333,
-    "SECOND_ORDER": 1.0762184858322144
+    "NONE": 1.2329986095428467,
+    "IN_BAND": 1.3853579759597778,
+    "BLIND": 2.107295513153076,
+    "SECOND_ORDER": 0.9203880429267883
   },
   "type_hardcase_boost": {
     "NONE": 1.25,
@@ -28,24 +28,24 @@
     "VULNERABLE": 1.2200000286102295
   },
   "sample_weight_summary": {
-    "train_binary_mean": 3.7415688037872314,
-    "train_type_mean": 4.667314052581787,
+    "train_binary_mean": 3.7264609336853027,
+    "train_type_mean": 4.59106969833374,
     "train_binary_max": 5.199999809265137,
     "train_type_max": 7.599999904632568
   },
   "train_family_counts": {
-    "v17_flow_vuln:BLIND": 287,
-    "baseline:BLIND": 29,
-    "v17_flow_vuln:SECOND_ORDER": 205,
-    "baseline:SECOND_ORDER": 24,
-    "v17_flow_vuln:IN_BAND": 394,
-    "v17_flow_safe:javascript": 92,
-    "v17_flow_safe:php": 109,
-    "v17_js_second_order_focus": 89,
-    "v17_flow_safe:python": 114,
-    "baseline:IN_BAND": 34,
-    "baseline:NONE": 25,
-    "v17_js_safe_sequelize_focus": 12,
-    "v17_flow_safe:java": 27
+    "v18_flow_safe:php": 109,
+    "baseline:SECOND_ORDER": 30,
+    "v18_flow_vuln:IN_BAND": 399,
+    "v18_js_second_order_focus": 95,
+    "v18_flow_safe:javascript": 101,
+    "v18_flow_vuln:BLIND": 288,
+    "v18_flow_vuln:SECOND_ORDER": 268,
+    "v18_flow_safe:python": 116,
+    "baseline:NONE": 28,
+    "v18_flow_safe:java": 23,
+    "baseline:BLIND": 30,
+    "baseline:IN_BAND": 27,
+    "v18_js_safe_sequelize_focus": 9
   }
 }
