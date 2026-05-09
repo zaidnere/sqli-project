@@ -62,14 +62,14 @@
 | 54 | `javascript/054_BLIND_unseen_case_gtuahfx.js` |  / NONE | VULNERABLE / BLIND | 1.0 | ❌ |
 | 55 | `javascript/055_BLIND_unseen_case_gupjzxb.js` |  / NONE | VULNERABLE / BLIND | 1.0 | ❌ |
 | 56 | `javascript/056_BLIND_unseen_case_dqtlfib.js` |  / NONE | VULNERABLE / BLIND | 1.0 | ❌ |
-| 57 | `javascript/057_SECOND_ORDER_unseen_case_fyarsbz.js` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9983 | ❌ |
-| 58 | `javascript/058_SECOND_ORDER_unseen_case_imqadzh.js` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9983 | ❌ |
-| 59 | `javascript/059_SECOND_ORDER_unseen_case_tltdkxu.js` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9983 | ❌ |
-| 60 | `javascript/060_SECOND_ORDER_unseen_case_onmrezm.js` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9983 | ❌ |
-| 61 | `javascript/061_SECOND_ORDER_unseen_case_pgpiwta.js` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9983 | ❌ |
-| 62 | `javascript/062_SECOND_ORDER_unseen_case_hetukux.js` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9983 | ❌ |
-| 63 | `javascript/063_SECOND_ORDER_unseen_case_andwtri.js` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9983 | ❌ |
-| 64 | `javascript/064_SECOND_ORDER_unseen_case_mfhjdej.js` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9983 | ❌ |
+| 57 | `javascript/057_SECOND_ORDER_unseen_case_fyarsbz.js` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
+| 58 | `javascript/058_SECOND_ORDER_unseen_case_imqadzh.js` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
+| 59 | `javascript/059_SECOND_ORDER_unseen_case_tltdkxu.js` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
+| 60 | `javascript/060_SECOND_ORDER_unseen_case_onmrezm.js` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
+| 61 | `javascript/061_SECOND_ORDER_unseen_case_pgpiwta.js` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
+| 62 | `javascript/062_SECOND_ORDER_unseen_case_hetukux.js` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
+| 63 | `javascript/063_SECOND_ORDER_unseen_case_andwtri.js` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
+| 64 | `javascript/064_SECOND_ORDER_unseen_case_mfhjdej.js` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
 | 65 | `java/065_SAFE_unseen_case_qmaxjhi.java` |  / NONE | SAFE / NONE | 0.08 | ❌ |
 | 66 | `java/066_SAFE_unseen_case_qhkfoif.java` |  / NONE | SAFE / NONE | 0.08 | ❌ |
 | 67 | `java/067_SAFE_unseen_case_zsirqtw.java` |  / NONE | SAFE / NONE | 0.08 | ❌ |
@@ -126,14 +126,14 @@
 | 118 | `php/118_BLIND_unseen_case_wagolmo.php` |  / NONE | VULNERABLE / BLIND | 0.9 | ❌ |
 | 119 | `php/119_BLIND_unseen_case_qglkzij.php` |  / NONE | VULNERABLE / BLIND | 0.9 | ❌ |
 | 120 | `php/120_BLIND_unseen_case_tuefejt.php` |  / NONE | VULNERABLE / BLIND | 0.9 | ❌ |
-| 121 | `php/121_SECOND_ORDER_unseen_case_octworh.php` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
-| 122 | `php/122_SECOND_ORDER_unseen_case_bfnuchl.php` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
-| 123 | `php/123_SECOND_ORDER_unseen_case_rcwvnhi.php` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
-| 124 | `php/124_SECOND_ORDER_unseen_case_fomjiqk.php` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
-| 125 | `php/125_SECOND_ORDER_unseen_case_ushthlt.php` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
-| 126 | `php/126_SECOND_ORDER_unseen_case_bcpvvmu.php` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
-| 127 | `php/127_SECOND_ORDER_unseen_case_duoblic.php` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
-| 128 | `php/128_SECOND_ORDER_unseen_case_cerzcxv.php` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
+| 121 | `php/121_SECOND_ORDER_unseen_case_octworh.php` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9 | ❌ |
+| 122 | `php/122_SECOND_ORDER_unseen_case_bfnuchl.php` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9 | ❌ |
+| 123 | `php/123_SECOND_ORDER_unseen_case_rcwvnhi.php` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9 | ❌ |
+| 124 | `php/124_SECOND_ORDER_unseen_case_fomjiqk.php` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9 | ❌ |
+| 125 | `php/125_SECOND_ORDER_unseen_case_ushthlt.php` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9 | ❌ |
+| 126 | `php/126_SECOND_ORDER_unseen_case_bcpvvmu.php` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9 | ❌ |
+| 127 | `php/127_SECOND_ORDER_unseen_case_duoblic.php` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9 | ❌ |
+| 128 | `php/128_SECOND_ORDER_unseen_case_cerzcxv.php` |  / NONE | VULNERABLE / SECOND_ORDER | 0.9 | ❌ |
 
 ## Failures
 
@@ -573,65 +573,65 @@
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `0.9983`
+- Risk score: `1.0`
 - Patterns: `UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected (found in function 'run_fn_abwqgbq'): UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
 
 ### `javascript/058_SECOND_ORDER_unseen_case_imqadzh.js`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `0.9983`
+- Risk score: `1.0`
 - Patterns: `UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected (found in function 'run_fn_sgagngv'): UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
 
 ### `javascript/059_SECOND_ORDER_unseen_case_tltdkxu.js`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `0.9983`
+- Risk score: `1.0`
 - Patterns: `UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected (found in function 'run_fn_fibrgcn'): UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
 
 ### `javascript/060_SECOND_ORDER_unseen_case_onmrezm.js`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `0.9983`
+- Risk score: `1.0`
 - Patterns: `UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected (found in function 'run_fn_iqaibdu'): UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
 
 ### `javascript/061_SECOND_ORDER_unseen_case_pgpiwta.js`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `0.9983`
+- Risk score: `1.0`
 - Patterns: `UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected (found in function 'run_fn_xnsrdug'): UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
 
 ### `javascript/062_SECOND_ORDER_unseen_case_hetukux.js`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `0.9983`
+- Risk score: `1.0`
 - Patterns: `UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected (found in function 'run_fn_jsubxkl'): UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
 
 ### `javascript/063_SECOND_ORDER_unseen_case_andwtri.js`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `0.9983`
+- Risk score: `1.0`
 - Patterns: `UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected (found in function 'run_fn_fxdkxbi'): UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
 
 ### `javascript/064_SECOND_ORDER_unseen_case_mfhjdej.js`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `0.9983`
+- Risk score: `1.0`
 - Patterns: `UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected (found in function 'run_fn_jgwpaxm'): UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: UNSAFE_EXEC. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
 
 ### `java/065_SAFE_unseen_case_qmaxjhi.java`
 
@@ -1053,62 +1053,62 @@
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `1.0`
+- Risk score: `0.9`
 - Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 3 chunk(s) — worst chunk scored 90%.
 
 ### `php/122_SECOND_ORDER_unseen_case_bfnuchl.php`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `1.0`
+- Risk score: `0.9`
 - Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 3 chunk(s) — worst chunk scored 90%.
 
 ### `php/123_SECOND_ORDER_unseen_case_rcwvnhi.php`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `1.0`
+- Risk score: `0.9`
 - Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 3 chunk(s) — worst chunk scored 90%.
 
 ### `php/124_SECOND_ORDER_unseen_case_fomjiqk.php`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `1.0`
+- Risk score: `0.9`
 - Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 3 chunk(s) — worst chunk scored 90%.
 
 ### `php/125_SECOND_ORDER_unseen_case_ushthlt.php`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `1.0`
+- Risk score: `0.9`
 - Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 3 chunk(s) — worst chunk scored 90%.
 
 ### `php/126_SECOND_ORDER_unseen_case_bcpvvmu.php`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `1.0`
+- Risk score: `0.9`
 - Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 3 chunk(s) — worst chunk scored 90%.
 
 ### `php/127_SECOND_ORDER_unseen_case_duoblic.php`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `1.0`
+- Risk score: `0.9`
 - Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 3 chunk(s) — worst chunk scored 90%.
 
 ### `php/128_SECOND_ORDER_unseen_case_cerzcxv.php`
 
 - Expected: ` / NONE`
 - Actual: `VULNERABLE / SECOND_ORDER`
-- Risk score: `1.0`
+- Risk score: `0.9`
 - Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 3 chunk(s) — worst chunk scored 90%.

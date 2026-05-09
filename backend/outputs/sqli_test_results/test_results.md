@@ -1,40 +1,100 @@
 # SQLi Test Suite Results
 
-- Total: **32**
-- Passed: **32**
-- Failed: **0**
+- Total: **20**
+- Passed: **11**
+- Failed: **9**
 
 | # | File | Expected | Actual | Risk | Pass |
 |---:|---|---|---|---:|---|
-| 1 | `python/001_SAFE_nested_allowlist_decoys.py` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
-| 2 | `python/002_IN_BAND_helper_returns_raw_order.py` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 3 | `python/003_BLIND_nested_exists_helper.py` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 4 | `python/004_SECOND_ORDER_stored_filter_chain.py` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
-| 5 | `python/005_SAFE_db_value_as_param_long_gap.py` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 6 | `python/006_IN_BAND_execute_alias.py` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9983 | ✅ |
-| 7 | `python/007_SAFE_sql_strings_comments_only.py` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 8 | `python/008_BLIND_time_based.py` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 9 | `javascript/009_SAFE_sequelize_replacements_decoy.js` | SAFE / NONE | SAFE / NONE | 0.0009 | ✅ |
-| 10 | `javascript/010_IN_BAND_replacements_exist_template_used.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
-| 11 | `javascript/011_BLIND_rows_length_permission.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 12 | `javascript/012_SECOND_ORDER_cache_order_clause.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
-| 13 | `javascript/013_SAFE_sqlite_params_spread_decoy.js` | SAFE / NONE | SAFE / NONE | 0.0168 | ✅ |
-| 14 | `javascript/014_IN_BAND_alias_bind_raw_table.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
-| 15 | `javascript/015_SAFE_comments_only.js` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 16 | `javascript/016_BLIND_time_based_template.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 17 | `java/017_SAFE_named_jdbc_params_decoy.java` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 18 | `java/018_IN_BAND_jdbc_concat_with_param_decoy.java` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9943 | ✅ |
-| 19 | `java/019_BLIND_exists_helper.java` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 20 | `java/020_SECOND_ORDER_stored_sql_helper.java` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9994 | ✅ |
-| 21 | `java/021_SAFE_rs_value_bound_param.java` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
-| 22 | `java/022_IN_BAND_stream_joined_ids.java` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 23 | `java/023_SAFE_comments_only.java` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 24 | `java/024_BLIND_time_based_statement.java` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 25 | `php/025_SAFE_pdo_allowlist_clamp_decoys.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
-| 26 | `php/026_IN_BAND_allowlist_exists_raw_used.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
-| 27 | `php/027_BLIND_fetch_assoc_helper.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 28 | `php/028_SECOND_ORDER_config_order_helper.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9998 | ✅ |
-| 29 | `php/029_SAFE_db_value_bound_param.php` | SAFE / NONE | SAFE / NONE | 0.0054 | ✅ |
-| 30 | `php/030_IN_BAND_query_alias_raw.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9967 | ✅ |
-| 31 | `php/031_SAFE_comments_only.php` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 32 | `php/032_BLIND_time_based_raw.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
+| 1 | `javascript/001_SAFE_object_map_alias_chain_order.js` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 2 | `javascript/002_IN_BAND_object_map_safe_then_raw_alias_used.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 3 | `javascript/003_SAFE_helper_allowlist_return_alias.js` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 4 | `javascript/004_IN_BAND_helper_called_but_request_used.js` | VULNERABLE / IN_BAND | SAFE / NONE | 0.08 | ❌ |
+| 5 | `javascript/005_SECOND_ORDER_db_loaded_sql_fragment_property_chain.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
+| 6 | `javascript/006_IN_BAND_request_config_where_clause_raw.js` | VULNERABLE / IN_BAND | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
+| 7 | `javascript/007_SECOND_ORDER_cache_config_order_clause.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 8 | `javascript/008_SAFE_config_value_as_bound_parameter.js` | SAFE / NONE | SAFE / NONE | 0.006 | ✅ |
+| 9 | `javascript/009_BLIND_count_bool_return.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
+| 10 | `javascript/010_IN_BAND_count_returned_as_data.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
+| 11 | `php/011_SAFE_property_array_alias_chain_order.php` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 12 | `php/012_IN_BAND_property_array_safe_then_raw_alias_used.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 13 | `php/013_SAFE_match_alias_chain_order.php` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 14 | `php/014_IN_BAND_match_exists_but_raw_used.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 15 | `php/015_SAFE_helper_return_alias_chain_order.php` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 16 | `php/016_IN_BAND_helper_called_but_request_used.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9988 | ✅ |
+| 17 | `php/017_BLIND_count_alias_boolean_return_with_and.php` | VULNERABLE / BLIND | VULNERABLE / IN_BAND | 0.9994 | ❌ |
+| 18 | `php/018_BLIND_count_alias_boolean_return_with_if.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
+| 19 | `php/019_IN_BAND_count_alias_json_response.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 20 | `php/020_SAFE_pdo_parameterized_count_bool_guard.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
+
+## Failures
+
+### `javascript/001_SAFE_object_map_alias_chain_order.js`
+
+- Expected: `SAFE / NONE`
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 3 chunk(s) — worst chunk scored 90%.
+
+### `javascript/003_SAFE_helper_allowlist_return_alias.js`
+
+- Expected: `SAFE / NONE`
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Explanation: SQL injection evidence detected by source/sink analysis. Risk score: 90%.
+
+### `javascript/004_IN_BAND_helper_called_but_request_used.js`
+
+- Expected: `VULNERABLE / IN_BAND`
+- Actual: `SAFE / NONE`
+- Risk score: `0.08`
+- Explanation: No SQL injection patterns detected. Risk score: 8%.
+
+### `javascript/006_IN_BAND_request_config_where_clause_raw.js`
+
+- Expected: `VULNERABLE / IN_BAND`
+- Actual: `VULNERABLE / SECOND_ORDER`
+- Risk score: `1.0`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
+
+### `javascript/007_SECOND_ORDER_cache_config_order_clause.js`
+
+- Expected: `VULNERABLE / SECOND_ORDER`
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 3 chunk(s) — worst chunk scored 90%.
+
+### `php/011_SAFE_property_array_alias_chain_order.php`
+
+- Expected: `SAFE / NONE`
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 5 chunk(s) — worst chunk scored 90%.
+
+### `php/013_SAFE_match_alias_chain_order.php`
+
+- Expected: `SAFE / NONE`
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 5 chunk(s) — worst chunk scored 90%.
+
+### `php/015_SAFE_helper_return_alias_chain_order.php`
+
+- Expected: `SAFE / NONE`
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 6 chunk(s) — worst chunk scored 90%.
+
+### `php/017_BLIND_count_alias_boolean_return_with_and.php`
+
+- Expected: `VULNERABLE / BLIND`
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9994`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected (found in function 'canExport'): SQL_CONCAT. Risk score: 100%. File analysed in 5 chunk(s) — worst chunk scored 100%.
