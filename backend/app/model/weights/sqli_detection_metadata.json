@@ -1,6 +1,6 @@
 {
-  "model_version": "model1-cnn-bilstm-dual-head-flow-balanced-v9",
-  "training_date_utc": "2026-05-07T20:39:44.442616Z",
+  "model_version": "model1-cnn-bilstm-dual-head-flow-generalization-v17",
+  "training_date_utc": "2026-05-09T16:19:10.757546Z",
   "dataset_version": "ae3141d41fb1",
   "normalizer_version": "semantic-normalizer-v2",
   "vocabulary_sha256": "ae3141d41fb1d93e33d54e6571c570e1e6286f079afdb1c2440a5d439632e92f",
@@ -8,7 +8,7 @@
   "pad_id": 0,
   "unk_id": 1,
   "architecture": {
-    "model_version": "model1-cnn-bilstm-dual-head-flow-balanced-v9",
+    "model_version": "model1-cnn-bilstm-dual-head-flow-generalization-v17",
     "input": {
       "shape": [
         "batch",
@@ -48,235 +48,239 @@
       }
     },
     "loss": "sample_weighted_BCE + lambda_type * sample_weighted_CCE",
-    "lambda_type": 1.05,
-    "hardcase_training": "V9 uses balanced hard-SAFE + hard-VULNERABLE flow calibration to improve raw ML recall, SAFE specificity and attack-type accuracy",
+    "lambda_type": 1.42,
+    "hardcase_training": "V17 uses balanced hard-SAFE + hard-VULNERABLE flow calibration to improve raw ML recall, SAFE specificity and attack-type accuracy",
     "threshold": 0.5
   },
   "threshold": 0.5,
   "class_weights": {
-    "SAFE": 2.0814433097839355,
-    "VULNERABLE": 0.828956127166748
+    "SAFE": 2.2052242755889893,
+    "VULNERABLE": 0.8276931047439575
   },
   "attack_type_class_weights": {
-    "NONE": 1.1708118915557861,
-    "IN_BAND": 0.7202280759811401,
-    "BLIND": 3.340257406234741,
-    "SECOND_ORDER": 1.9362103939056396
+    "NONE": 1.188159704208374,
+    "IN_BAND": 1.3046436309814453,
+    "BLIND": 2.006455659866333,
+    "SECOND_ORDER": 1.0762184858322144
   },
   "hardcase_training": {
     "uses_sample_weight_binary": true,
     "uses_sample_weight_type": true,
     "type_hardcase_boost": {
-      "NONE": 1.350000023841858,
-      "IN_BAND": 1.2200000286102295,
-      "BLIND": 1.350000023841858,
-      "SECOND_ORDER": 1.4500000476837158
+      "NONE": 1.25,
+      "IN_BAND": 1.5499999523162842,
+      "BLIND": 1.7599999904632568,
+      "SECOND_ORDER": 0.949999988079071
     },
     "binary_hardcase_boost": {
-      "SAFE": 1.2000000476837158,
-      "VULNERABLE": 1.1799999475479126
+      "SAFE": 1.159999966621399,
+      "VULNERABLE": 1.2200000286102295
     },
-    "target_problem": "V9: keep vulnerable recall high while reducing raw ML false positives on prepared/bindings/allowlist/query-builder SAFE flow"
+    "target_problem": "V17: keep vulnerable recall high while reducing raw ML false positives on prepared/bindings/allowlist/query-builder SAFE flow"
   },
   "split_info": {
     "strategy": "stratified_by_attack_type_and_language_when_available",
     "seed": 42,
-    "train_count": 673,
-    "val_count": 144,
-    "test_count": 145,
-    "train_indices_sha256": "5bcb0dc63e33262f4cc0b498b5f60cca1f1e90b03956fdb6bf4ca1ceb690c5a5",
-    "val_indices_sha256": "d654344da7e5cdfe235c02140f70a704e277eb08090974ceb545f13b47b551c0",
-    "test_indices_sha256": "8dec3e7ff98753c39b1d666a741fbe73a6fc7331612562767a4d1b2517730b25",
+    "train_count": 1441,
+    "val_count": 309,
+    "test_count": 309,
+    "train_indices_sha256": "41285ae56ce47b39d0cb2150c7dd036304d3e0b6ddc0c63e70056b84d20e3c63",
+    "val_indices_sha256": "9e35d01b45053e90b860fff6c4678771e180b19dbd88442e8ec14ca9bacd6b85",
+    "test_indices_sha256": "131e114dceaec08c7181a60cb9079f17ccd071439741c56ccc0720f7e8112c5c",
     "binary_class_weights": {
-      "SAFE": 2.0814433097839355,
-      "VULNERABLE": 0.828956127166748
+      "SAFE": 2.2052242755889893,
+      "VULNERABLE": 0.8276931047439575
     },
     "attack_type_class_weights": {
-      "NONE": 1.1708118915557861,
-      "IN_BAND": 0.7202280759811401,
-      "BLIND": 3.340257406234741,
-      "SECOND_ORDER": 1.9362103939056396
+      "NONE": 1.188159704208374,
+      "IN_BAND": 1.3046436309814453,
+      "BLIND": 2.006455659866333,
+      "SECOND_ORDER": 1.0762184858322144
     },
     "type_hardcase_boost": {
-      "NONE": 1.350000023841858,
-      "IN_BAND": 1.2200000286102295,
-      "BLIND": 1.350000023841858,
-      "SECOND_ORDER": 1.4500000476837158
+      "NONE": 1.25,
+      "IN_BAND": 1.5499999523162842,
+      "BLIND": 1.7599999904632568,
+      "SECOND_ORDER": 0.949999988079071
     },
     "binary_hardcase_boost": {
-      "SAFE": 1.2000000476837158,
-      "VULNERABLE": 1.1799999475479126
+      "SAFE": 1.159999966621399,
+      "VULNERABLE": 1.2200000286102295
     },
     "sample_weight_summary": {
-      "train_binary_mean": 3.10326886177063,
-      "train_type_mean": 2.8396735191345215,
-      "train_binary_max": 3.700000047683716,
-      "train_type_max": 3.9000000953674316
+      "train_binary_mean": 3.7415688037872314,
+      "train_type_mean": 4.667314052581787,
+      "train_binary_max": 5.199999809265137,
+      "train_type_max": 7.599999904632568
     },
     "train_family_counts": {
-      "v9_flow_vuln:SECOND_ORDER": 99,
-      "v9_flow_safe:python": 58,
-      "v9_flow_safe:php": 48,
-      "v9_flow_safe:javascript": 45,
-      "v9_flow_vuln:IN_BAND": 260,
-      "baseline:NONE": 28,
-      "baseline:SECOND_ORDER": 27,
-      "baseline:BLIND": 26,
-      "baseline:IN_BAND": 25,
-      "v9_flow_vuln:BLIND": 42,
-      "v9_flow_safe:java": 15
+      "v17_flow_vuln:BLIND": 287,
+      "baseline:BLIND": 29,
+      "v17_flow_vuln:SECOND_ORDER": 205,
+      "baseline:SECOND_ORDER": 24,
+      "v17_flow_vuln:IN_BAND": 394,
+      "v17_flow_safe:javascript": 92,
+      "v17_flow_safe:php": 109,
+      "v17_js_second_order_focus": 89,
+      "v17_flow_safe:python": 114,
+      "baseline:IN_BAND": 34,
+      "baseline:NONE": 25,
+      "v17_js_safe_sequelize_focus": 12,
+      "v17_flow_safe:java": 27
     }
   },
   "dataset_profile": {
-    "created_at": "2026-05-07T19:46:40.357691Z",
-    "n_samples": 962,
+    "created_at": "2026-05-09T14:02:10.542998Z",
+    "n_samples": 2059,
     "sequence_length": 256,
     "vocabulary_size": 179,
     "vocabulary_sha256": "ae3141d41fb1d93e33d54e6571c570e1e6286f079afdb1c2440a5d439632e92f",
     "pad_id": 0,
     "unk_id": 1,
     "verdict_counts": {
-      "SAFE": 277,
-      "VULNERABLE": 685
+      "SAFE": 542,
+      "VULNERABLE": 1517
     },
     "attack_type_counts": {
-      "NONE": 277,
-      "IN_BAND": 408,
-      "BLIND": 97,
-      "SECOND_ORDER": 180
+      "NONE": 542,
+      "IN_BAND": 611,
+      "BLIND": 451,
+      "SECOND_ORDER": 455
     },
     "language_counts": {
-      "python": 270,
-      "javascript": 258,
-      "php": 257,
-      "java": 177
+      "javascript": 752,
+      "php": 634,
+      "python": 417,
+      "java": 256
     },
     "sample_family_counts": {
-      "baseline:NONE": 37,
-      "v9_flow_vuln:IN_BAND": 371,
-      "v9_flow_vuln:SECOND_ORDER": 140,
-      "v9_flow_safe:javascript": 68,
-      "v9_flow_vuln:BLIND": 59,
-      "baseline:IN_BAND": 37,
-      "baseline:BLIND": 38,
-      "v9_flow_safe:php": 68,
-      "baseline:SECOND_ORDER": 40,
-      "v9_flow_safe:python": 85,
-      "v9_flow_safe:java": 19
+      "v17_flow_vuln:SECOND_ORDER": 300,
+      "v17_flow_vuln:BLIND": 411,
+      "v17_flow_vuln:IN_BAND": 570,
+      "v17_flow_safe:python": 162,
+      "v17_flow_safe:java": 37,
+      "baseline:NONE": 40,
+      "v17_flow_safe:php": 156,
+      "v17_js_second_order_focus": 118,
+      "v17_flow_safe:javascript": 127,
+      "v17_js_safe_sequelize_focus": 20,
+      "baseline:SECOND_ORDER": 37,
+      "baseline:IN_BAND": 41,
+      "baseline:BLIND": 40
     },
-    "avg_sample_weight_binary": 3.1011438369750977,
-    "avg_sample_weight_type": 2.8352391719818115,
-    "max_sample_weight_binary": 3.700000047683716,
-    "max_sample_weight_type": 3.9000000953674316,
-    "avg_non_pad_length": 106.67879417879418,
+    "avg_sample_weight_binary": 3.7409424781799316,
+    "avg_sample_weight_type": 4.663623332977295,
+    "max_sample_weight_binary": 5.199999809265137,
+    "max_sample_weight_type": 7.599999904632568,
+    "avg_non_pad_length": 99.75716367168529,
     "max_non_pad_length": 256,
-    "min_non_pad_length": 38,
-    "padded_samples": 960,
-    "truncated_samples": 2,
-    "truncation_rate": 0.002079002079002079,
-    "unk_token_count": 1360,
-    "unk_rate": 0.013252131546894032,
+    "min_non_pad_length": 25,
+    "padded_samples": 2056,
+    "truncated_samples": 3,
+    "truncation_rate": 0.0014570179698882952,
+    "unk_token_count": 3019,
+    "unk_rate": 0.014698149951314509,
     "duplicate_sequence_count": 0,
     "top_tokens": [
       [
-        "(",
-        7626
-      ],
-      [
-        ")",
-        7626
-      ],
-      [
         "=",
-        6988
+        14867
       ],
       [
         ";",
-        6317
+        14653
+      ],
+      [
+        "(",
+        13403
+      ],
+      [
+        ")",
+        13401
       ],
       [
         ".",
-        6222
+        11284
       ],
       [
         "STRING",
-        5112
+        9444
       ],
       [
         ",",
-        3580
+        6637
       ],
       [
         "NUMBER",
-        2754
+        5878
       ],
       [
         "VAR_3",
-        2505
-      ],
-      [
-        "VAR_1",
-        2171
-      ],
-      [
-        "VAR_2",
-        2065
+        5174
       ],
       [
         "{",
-        2043
+        4805
       ],
       [
         "}",
-        2039
+        4799
+      ],
+      [
+        "VAR_1",
+        4699
       ],
       [
         "VAR_4",
-        1828
+        4382
+      ],
+      [
+        "VAR_2",
+        4210
       ],
       [
         "VAR_5",
-        1813
+        3870
       ],
       [
         "VAR_6",
-        1699
-      ],
-      [
-        ":",
-        1643
-      ],
-      [
-        "VAR_7",
-        1584
+        3555
       ],
       [
         "[",
-        1521
+        3280
       ],
       [
         "]",
-        1521
+        3280
+      ],
+      [
+        "VAR_7",
+        3267
       ],
       [
         "SAFE_NUMERIC_VAR",
-        1451
+        3097
       ],
       [
-        "VAR_8",
-        1390
+        ":",
+        3051
       ],
       [
         "UNK",
-        1360
+        3019
       ],
       [
-        "SQL_STRING",
-        1301
+        "VAR_8",
+        2943
       ],
       [
         "VAR_0",
-        1295
+        2659
+      ],
+      [
+        "VAR_9",
+        2623
       ]
     ]
   },

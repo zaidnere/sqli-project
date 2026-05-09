@@ -1,153 +1,155 @@
 {
-  "created_at": "2026-05-07T19:46:40.357691Z",
-  "n_samples": 962,
+  "created_at": "2026-05-09T14:02:10.542998Z",
+  "n_samples": 2059,
   "sequence_length": 256,
   "vocabulary_size": 179,
   "vocabulary_sha256": "ae3141d41fb1d93e33d54e6571c570e1e6286f079afdb1c2440a5d439632e92f",
   "pad_id": 0,
   "unk_id": 1,
   "verdict_counts": {
-    "SAFE": 277,
-    "VULNERABLE": 685
+    "SAFE": 542,
+    "VULNERABLE": 1517
   },
   "attack_type_counts": {
-    "NONE": 277,
-    "IN_BAND": 408,
-    "BLIND": 97,
-    "SECOND_ORDER": 180
+    "NONE": 542,
+    "IN_BAND": 611,
+    "BLIND": 451,
+    "SECOND_ORDER": 455
   },
   "language_counts": {
-    "python": 270,
-    "javascript": 258,
-    "php": 257,
-    "java": 177
+    "javascript": 752,
+    "php": 634,
+    "python": 417,
+    "java": 256
   },
   "sample_family_counts": {
-    "baseline:NONE": 37,
-    "v9_flow_vuln:IN_BAND": 371,
-    "v9_flow_vuln:SECOND_ORDER": 140,
-    "v9_flow_safe:javascript": 68,
-    "v9_flow_vuln:BLIND": 59,
-    "baseline:IN_BAND": 37,
-    "baseline:BLIND": 38,
-    "v9_flow_safe:php": 68,
-    "baseline:SECOND_ORDER": 40,
-    "v9_flow_safe:python": 85,
-    "v9_flow_safe:java": 19
+    "v17_flow_vuln:SECOND_ORDER": 300,
+    "v17_flow_vuln:BLIND": 411,
+    "v17_flow_vuln:IN_BAND": 570,
+    "v17_flow_safe:python": 162,
+    "v17_flow_safe:java": 37,
+    "baseline:NONE": 40,
+    "v17_flow_safe:php": 156,
+    "v17_js_second_order_focus": 118,
+    "v17_flow_safe:javascript": 127,
+    "v17_js_safe_sequelize_focus": 20,
+    "baseline:SECOND_ORDER": 37,
+    "baseline:IN_BAND": 41,
+    "baseline:BLIND": 40
   },
-  "avg_sample_weight_binary": 3.1011438369750977,
-  "avg_sample_weight_type": 2.8352391719818115,
-  "max_sample_weight_binary": 3.700000047683716,
-  "max_sample_weight_type": 3.9000000953674316,
-  "avg_non_pad_length": 106.67879417879418,
+  "avg_sample_weight_binary": 3.7409424781799316,
+  "avg_sample_weight_type": 4.663623332977295,
+  "max_sample_weight_binary": 5.199999809265137,
+  "max_sample_weight_type": 7.599999904632568,
+  "avg_non_pad_length": 99.75716367168529,
   "max_non_pad_length": 256,
-  "min_non_pad_length": 38,
-  "padded_samples": 960,
-  "truncated_samples": 2,
-  "truncation_rate": 0.002079002079002079,
-  "unk_token_count": 1360,
-  "unk_rate": 0.013252131546894032,
+  "min_non_pad_length": 25,
+  "padded_samples": 2056,
+  "truncated_samples": 3,
+  "truncation_rate": 0.0014570179698882952,
+  "unk_token_count": 3019,
+  "unk_rate": 0.014698149951314509,
   "duplicate_sequence_count": 0,
   "top_tokens": [
     [
-      "(",
-      7626
-    ],
-    [
-      ")",
-      7626
-    ],
-    [
       "=",
-      6988
+      14867
     ],
     [
       ";",
-      6317
+      14653
+    ],
+    [
+      "(",
+      13403
+    ],
+    [
+      ")",
+      13401
     ],
     [
       ".",
-      6222
+      11284
     ],
     [
       "STRING",
-      5112
+      9444
     ],
     [
       ",",
-      3580
+      6637
     ],
     [
       "NUMBER",
-      2754
+      5878
     ],
     [
       "VAR_3",
-      2505
-    ],
-    [
-      "VAR_1",
-      2171
-    ],
-    [
-      "VAR_2",
-      2065
+      5174
     ],
     [
       "{",
-      2043
+      4805
     ],
     [
       "}",
-      2039
+      4799
+    ],
+    [
+      "VAR_1",
+      4699
     ],
     [
       "VAR_4",
-      1828
+      4382
+    ],
+    [
+      "VAR_2",
+      4210
     ],
     [
       "VAR_5",
-      1813
+      3870
     ],
     [
       "VAR_6",
-      1699
-    ],
-    [
-      ":",
-      1643
-    ],
-    [
-      "VAR_7",
-      1584
+      3555
     ],
     [
       "[",
-      1521
+      3280
     ],
     [
       "]",
-      1521
+      3280
+    ],
+    [
+      "VAR_7",
+      3267
     ],
     [
       "SAFE_NUMERIC_VAR",
-      1451
+      3097
     ],
     [
-      "VAR_8",
-      1390
+      ":",
+      3051
     ],
     [
       "UNK",
-      1360
+      3019
     ],
     [
-      "SQL_STRING",
-      1301
+      "VAR_8",
+      2943
     ],
     [
       "VAR_0",
-      1295
+      2659
+    ],
+    [
+      "VAR_9",
+      2623
     ]
   ]
 }

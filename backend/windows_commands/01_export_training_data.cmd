@@ -1,16 +1,17 @@
 @echo off
-REM Run from backend\
+cd /d %~dp0\..\backend
 set PYTHONPATH=.
 python scripts\export_for_colab.py ^
   --out colab_export ^
   --sequence-length 256 ^
   --generated-per-class 4 ^
-  --hardcase-per-family 10 ^
-  --safe-calibration-per-family 5 ^
-  --generated-seeds 20260531 20260601 20260602 ^
-  --audit-csv outputs\model_audit_mega_after_v8.csv ^
-  --audit-csv outputs\model_audit_realistic_after_v8.csv ^
-  --audit-csv outputs\model_audit_framework_after_v8.csv ^
-  --audit-csv outputs\model_audit_enterprise_after_v8.csv ^
-  --audit-csv outputs\model_audit_hard_after_v8.csv ^
-  --audit-csv outputs\model_audit_targeted_after_v8.csv
+  --hardcase-per-family 18 ^
+  --safe-calibration-per-family 10 ^
+  --generated-seeds 20260820 20260821 20260822 ^
+  --audit-csv outputs\v14_policy_realistic.csv ^
+  --audit-csv outputs\v14_policy_enterprise.csv ^
+  --audit-csv outputs\v14_policy_framework.csv ^
+  --audit-csv outputs\v14_policy_adversarial.csv ^
+  --audit-csv outputs\model_audit_enterprise_after_v16.csv ^
+  --audit-csv outputs\model_audit_adversarial_after_v16.csv ^
+  --audit-csv outputs\model_audit_framework_after_v16.csv

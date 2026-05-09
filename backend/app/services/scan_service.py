@@ -423,6 +423,8 @@ def _raw_safe_query_builder(code: str, language: str) -> bool:
         if has_param_exec and (has_allowlist or _rx(r"\.join\s*\(\s*parts\s*\)", c) or _rx(r"ORDER\s+BY\s+created_at", c)) and _rx(r"params\.(?:append|extend)\s*\(|\[[^\]]+\]", c) and not raw_used:
             return True
     elif language == "javascript":
+        if _raw_js_safe_sequelize_replacements(code):
+            return True
         has_param_exec = _rx(r"\.\s*(?:all|get|run|each)\s*\(\s*\w+\s*,\s*(?:params|\[[^\]]*\]|\w+)\s*\)", c)
         has_allowlist = _rx(r"\.sorts\.get\s*\(", c) or _rx(r"new\s+Map\s*\(\s*\[", c) or _rx(r"Set\s*\(", c)
         has_numeric = _raw_safe_numeric_limit_offset(code, language) or _rx(r"\b(?:limit|offset)\s*=\s*clamp\s*\(", c)
@@ -453,6 +455,61 @@ def _raw_safe_query_builder(code: str, language: str) -> bool:
             return True
     return False
 
+
+
+def _raw_time_based_delay_sql(code: str, language: str) -> bool:
+    """Attack-type evidence for time-based blind SQLi in executed SQL."""
+    c = _strip_comments(code, language)
+    time_expr = (
+        _rx(r"\bSLEEP\s*\(", c)
+        or _rx(r"\bpg_sleep\s*\(", c)
+        or _rx(r"\bWAITFOR\s+DELAY\b", c)
+        or _rx(r"\bBENCHMARK\s*\(", c)
+        or _rx(r"\bDBMS_LOCK\s*\.\s*SLEEP\s*\(", c)
+        or _rx(r"\bIF\s*\([\s\S]{0,240}\bSLEEP\s*\(", c)
+        or _rx(r"\bCASE\s+WHEN[\s\S]{0,300}\bSLEEP\s*\(", c)
+    )
+    return bool(time_expr and _raw_has_valid_execution_sink(code, language))
+
+
+def _raw_js_safe_sequelize_replacements(code: str) -> bool:
+    """Safe Sequelize named replacements: query string has :params, no ${} or concatenation."""
+    c = _strip_comments(code, "javascript")
+    if not (_rx(r"\.\s*query\s*\(", c) and _rx(r"\breplacements\s*:", c)):
+        return False
+    safe_named = _rx(
+        r"\.\s*query\s*\(\s*(['\"])\s*[\s\S]{0,80}\b(?:SELECT|UPDATE|DELETE|INSERT)\b[\s\S]{0,600}:[A-Za-z_]\w*[\s\S]{0,600}\1\s*,\s*\{\s*replacements\s*:",
+        c,
+    )
+    unsafe_interpolation = _rx(r"\.\s*query\s*\(\s*`[\s\S]{0,600}\$\{", c)
+    unsafe_concat = _rx(r"\.\s*query\s*\(\s*(['\"])[\s\S]{0,600}\1\s*\+", c)
+    return bool(safe_named and not unsafe_interpolation and not unsafe_concat)
+
+
+def _raw_php_callable_query_alias(code: str) -> bool:
+    """PHP callable-array alias to a known DB execution method, then invoked."""
+    c = _strip_comments(code, "php")
+    aliases = set()
+    for m in re.finditer(
+        r"\$(\w+)\s*=\s*\[\s*(?:\$this->\w+|\$\w+)\s*,\s*['\"](?:query|exec)['\"]\s*\]",
+        c,
+        re.I,
+    ):
+        aliases.add(m.group(1))
+    if not aliases:
+        return False
+    for alias in aliases:
+        call_pat = rf"\${re.escape(alias)}\s*\(\s*(\$\w+|['\"][\s\S]{{0,400}}?['\"])\s*\)"
+        for cm in re.finditer(call_pat, c, re.I):
+            arg = cm.group(1)
+            if arg.startswith(("'", '"')):
+                if re.search(r"\b(?:SELECT|UPDATE|DELETE|INSERT)\b", arg, re.I):
+                    return True
+                continue
+            var = re.escape(arg[1:])
+            if re.search(rf"\${var}\s*=\s*[^;]{{0,900}}\b(?:SELECT|UPDATE|DELETE|INSERT)\b[^;]*;", c, re.I):
+                return True
+    return False
 
 
 def _raw_safe_db_loaded_as_bound_param(code: str, language: str) -> bool:
@@ -540,6 +597,8 @@ def _raw_second_order_stored_sql(code: str, language: str) -> bool:
 
 def _raw_blind_boolean_sink(code: str, language: str) -> bool:
     c = _strip_comments(code, language)
+    if _raw_time_based_delay_sql(code, language):
+        return True
     if language == "python":
         # Avoid treating ordinary list-returning repository methods as blind.
         if _rx(r"return\s+\[\s*dict\s*\(\s*row\s*\)\s+for\s+row\s+in", c):
@@ -609,7 +668,7 @@ def _raw_has_valid_execution_sink(code: str, language: str) -> bool:
     if language == "java":
         return _rx(r"\.(?:executeQuery|executeUpdate|execute|queryForList|query|update)\s*\(", c) or _rx(r"\bprepareStatement\s*\(", c) or _rx(r"\bcreateNativeQuery\s*\(", c)
     if language == "php":
-        return _rx(r"->\s*(?:query|exec|execute|prepare)\s*\(", c) or _rx(r"\bmysqli_(?:query|execute)\s*\(", c) or _rx(r"\bDB::(?:select|statement|raw)\s*\(", c)
+        return _rx(r"->\s*(?:query|exec|execute|prepare)\s*\(", c) or _rx(r"\bmysqli_(?:query|execute)\s*\(", c) or _rx(r"\bDB::(?:select|statement|raw)\s*\(", c) or _raw_php_callable_query_alias(code)
     return False
 
 
@@ -735,16 +794,40 @@ def _raw_php_safe_prepared_only(code: str) -> bool:
     # ORDER BY " . $raw.
     return bool(has_prepare and has_binding and not has_raw_query and not has_raw_prepare_syntax)
 
-def _apply_raw_evidence_override(raw_code: str, language: str, label: str, attack_type: str, score: float, source: str, all_signals: set[str]) -> tuple[str, str, float, str, set[str]]:
+def _apply_raw_evidence_override(raw_code: str, language: str, label: str, attack_type: str, score: float, source: str, all_signals: set[str], ml_score: float | None = None, ml_attack_type: str | None = None) -> tuple[str, str, float, str, set[str]]:
     """Final evidence-aware correction layer. Conservative and source/sink based."""
     signals = set(all_signals)
+
+    # V11 model-first correction:
+    # If the CNN+BiLSTM model is very confident that a file is vulnerable,
+    # do not let a broad raw fallback erase the model's decision simply because
+    # the exact sink syntax is uncommon (for example PHP callable-array aliases).
+    # This is not a new filename or pattern rule; it preserves the primary ML
+    # decision and keeps raw rules as a safety/explanation layer.
+    ml_specific = (ml_attack_type or attack_type or "NONE")
+    confident_ml_vuln = (
+        ml_score is not None
+        and ml_score >= 0.95
+        and label == "VULNERABLE"
+        and ml_specific in {"IN_BAND", "BLIND", "SECOND_ORDER"}
+    )
+
     if not _raw_has_valid_execution_sink(raw_code, language):
+        # Option B / ML-first but evidence-aware:
+        # A very confident model may drive the vulnerability verdict, but it must
+        # not turn documentation, comments, or standalone SQL-looking strings into
+        # an executed SQLi finding when no DB sink exists.  This keeps the model
+        # central while preserving the source→sink requirement of SAST.
         return "SAFE", "NONE", min(score, 0.25), "raw_no_valid_sql_sink", signals
 
     # Source provenance wins over boolean sink. Stored/config/DB SQL syntax is SECOND_ORDER even if a result is checked.
     if _raw_second_order_stored_sql(raw_code, language):
         signals.add("SECOND_ORDER_FLOW")
         return "VULNERABLE", "SECOND_ORDER", max(score, 0.90), "raw_second_order_flow", signals
+
+    if _raw_time_based_delay_sql(raw_code, language) and label in ("VULNERABLE", "SUSPICIOUS"):
+        signals.add("BOOLEAN_SINK")
+        return "VULNERABLE", "BLIND", max(score, 0.90, float(ml_score or 0.0)), "raw_time_based_blind", signals
 
     # Strong safe identifier proof must run BEFORE raw concat/template danger.
     # Safe ORDER BY / FROM syntax may be executed as one SQL string, so the ML
@@ -796,6 +879,14 @@ def _apply_raw_evidence_override(raw_code: str, language: str, label: str, attac
         signals.add("SAFE_NUMERIC_VAR")
         return "SAFE", "NONE", min(score, 0.08), "raw_safe_numeric_limit_offset", signals
 
+    # From this point onward, ML confidence may keep the file VULNERABLE,
+    # but attack-type selection is evidence-aware.  In previous V11/V12 runs,
+    # accepting ml_specific blindly caused regressions such as IN_BAND being
+    # reported as SECOND_ORDER when no stored/config/DB-loaded SQL fragment
+    # existed.  Therefore the type is chosen by concrete flow evidence first:
+    # SECOND_ORDER only with stored/config/DB-loaded SQL syntax, BLIND only with
+    # boolean/time-decision evidence, otherwise direct unsafe SQL is IN_BAND.
+
     # Dangerous PHP raw SQL, with BLIND type when the raw query controls a boolean/security decision.
     if language == "php" and _raw_php_danger(raw_code):
         signals.add("SQL_CONCAT")
@@ -806,6 +897,20 @@ def _apply_raw_evidence_override(raw_code: str, language: str, label: str, attac
     if label in ("VULNERABLE", "SUSPICIOUS") and _raw_blind_boolean_sink(raw_code, language):
         signals.add("BOOLEAN_SINK")
         return "VULNERABLE", "BLIND", max(score, 0.90), "raw_blind_boolean_sink", signals
+
+    if confident_ml_vuln:
+        # Preserve the model as the primary vulnerability engine without letting
+        # an unsupported attack-type argmax override stronger semantic evidence.
+        if "SECOND_ORDER_FLOW" in signals or _raw_second_order_stored_sql(raw_code, language):
+            signals.add("SECOND_ORDER_FLOW")
+            return "VULNERABLE", "SECOND_ORDER", max(score, float(ml_score)), "ml_confident_with_second_order_evidence", signals
+        if "BOOLEAN_SINK" in signals or _raw_blind_boolean_sink(raw_code, language):
+            signals.add("BOOLEAN_SINK")
+            return "VULNERABLE", "BLIND", max(score, float(ml_score)), "ml_confident_with_blind_evidence", signals
+        if signals & {"SQL_CONCAT", "FSTRING_SQL", "FSTRING_SQL_RAW", "UNSAFE_EXEC"}:
+            return "VULNERABLE", "IN_BAND", max(score, float(ml_score)), "ml_confident_vulnerable_evidence_typed", signals
+        return "VULNERABLE", ("IN_BAND" if ml_specific == "SECOND_ORDER" else ml_specific), max(score, float(ml_score)), "ml_confident_vulnerable", signals
+
     return label, attack_type, score, source, signals
 
 
@@ -1232,6 +1337,9 @@ def _raw_fast_detection(raw_code: str, language: str) -> ScanDetectionInfo | Non
     if _raw_safe_numeric_limit_offset(raw_code, language):
         return make("SAFE", "NONE", 0.08, "raw_safe_numeric_limit_offset", "LIMIT/OFFSET values are numeric and bounded before SQL execution.")
 
+    if _raw_time_based_delay_sql(raw_code, language):
+        return make("VULNERABLE", "BLIND", 0.90, "raw_time_based_blind", "Unsafe SQL contains a time-delay expression, which is blind SQL injection evidence.")
+
     if language == "php" and _raw_php_danger(raw_code):
         if _raw_blind_boolean_sink(raw_code, language):
             return make("VULNERABLE", "BLIND", 0.90, "raw_php_blind_sqli", "Raw PHP SQL controls a boolean/security decision.")
@@ -1285,10 +1393,17 @@ def _build_detection(
     4. Apply hard override: if ANY chunk has HARD_VULNERABLE signals → VULNERABLE
     5. Build the final verdict from the worst chunk's score
     """
-    if not force_ml:
-        fast = _raw_fast_detection(raw_code, language)
-        if fast is not None:
-            return fast
+    # V9 final policy: ML-first runtime.
+    #
+    # The old raw fast path returned a final verdict before neural inference.
+    # It was useful for speed, but audit showed that regular execution became
+    # rule/raw-heavy even though V9 is strong enough to run on almost every file.
+    # Therefore, normal detection always goes through chunk preprocessing + ML.
+    # Raw evidence is still applied later by _apply_raw_evidence_override() as an
+    # evidence-aware safety/correction layer, not as a model bypass.
+    #
+    # Keep _raw_fast_detection() defined for historical debugging only; do not
+    # call it from the default production/test path.
 
     chunks = split_into_chunks(raw_code, language)
 
@@ -1443,6 +1558,33 @@ def _build_detection(
                 round(sum(vals) / len(vals), 4) if vals else 0.0
             )
 
+    # ── ML-specific type preservation ──────────────────────────────────────────
+    # V11 learned several attack-type distinctions that do not always emit a
+    # simple BOOLEAN_SINK token (for example time-based BLIND SQLi).  If the
+    # most risky ML chunk is extremely confident and predicts a specific type,
+    # keep that type as the primary type unless a stronger semantic rule below
+    # has explicit SECOND_ORDER/BOOLEAN evidence.
+    ml_strong_specific_type = (
+        ml_file_score is not None
+        and ml_file_score >= 0.95
+        and ml_file_attack_type in {"BLIND", "SECOND_ORDER"}
+        and label in ("VULNERABLE", "SUSPICIOUS")
+    )
+    # Option B: keep ML as the main verdict engine, but do not let a
+    # high-confidence attack-type argmax override concrete flow evidence.
+    # SECOND_ORDER requires stored/config/DB-loaded SQL fragment evidence;
+    # BLIND requires boolean/time-decision evidence.  Otherwise the rule layer
+    # below is allowed to type direct unsafe SQL as IN_BAND.
+    raw_second_order_evidence = _raw_second_order_stored_sql(raw_code, language)
+    raw_blind_evidence = "BOOLEAN_SINK" in all_signals or _raw_time_based_delay_sql(raw_code, language) or _raw_blind_boolean_sink(raw_code, language)
+    ml_specific_type_supported = (
+        (ml_file_attack_type == "SECOND_ORDER" and raw_second_order_evidence)
+        or (ml_file_attack_type == "BLIND" and raw_blind_evidence)
+    )
+    if ml_strong_specific_type and ml_specific_type_supported:
+        file_attack_type = ml_file_attack_type
+        file_attack_type_id = {"NONE": 0, "IN_BAND": 1, "BLIND": 2, "SECOND_ORDER": 3}[file_attack_type]
+
     # ── Rule-based attack-type override using flow signals ─────────────────────
     # When type-head argmax is uncertain (often the case until model fully
     # trains on flow signals), use deterministic flow-signal logic:
@@ -1452,8 +1594,8 @@ def _build_detection(
     # The override applies whenever the file is VULNERABLE/SUSPICIOUS — file
     # is unsafe by ML, and we just need to label the kind of unsafe.
     if label in ("VULNERABLE", "SUSPICIOUS"):
-        has_bool_sink = "BOOLEAN_SINK" in all_signals
-        has_second_order_flow = "SECOND_ORDER_FLOW" in all_signals
+        has_bool_sink = "BOOLEAN_SINK" in all_signals or _raw_time_based_delay_sql(raw_code, language) or _raw_blind_boolean_sink(raw_code, language)
+        has_second_order_flow = _raw_second_order_stored_sql(raw_code, language)
         has_dangerous = bool(all_signals & {"FSTRING_SQL", "FSTRING_SQL_RAW", "SQL_CONCAT", "UNSAFE_EXEC", "SECOND_ORDER_FLOW"})
         rule_attack_type = None
         if has_second_order_flow:
@@ -1463,8 +1605,12 @@ def _build_detection(
         elif has_dangerous:
             rule_attack_type = "IN_BAND"
         if rule_attack_type is not None:
-            file_attack_type = rule_attack_type
-            file_attack_type_id = {"NONE": 0, "IN_BAND": 1, "BLIND": 2, "SECOND_ORDER": 3}[rule_attack_type]
+            # Evidence-aware attack typing: a confident ML verdict is important,
+            # but the attack-type head can still confuse IN_BAND/BLIND/SECOND_ORDER.
+            # Let concrete flow evidence choose the type whenever present.
+            if (not ml_strong_specific_type) or (not ml_specific_type_supported) or rule_attack_type == ml_file_attack_type:
+                file_attack_type = rule_attack_type
+                file_attack_type_id = {"NONE": 0, "IN_BAND": 1, "BLIND": 2, "SECOND_ORDER": 3}[rule_attack_type]
 
     # Sanity: if VULNERABLE label but attack type came back NONE, default IN_BAND
     if label == "VULNERABLE" and file_attack_type == "NONE":
@@ -1488,6 +1634,8 @@ def _build_detection(
         score=final_score,
         source=verdict_source,
         all_signals=all_signals,
+        ml_score=ml_file_score,
+        ml_attack_type=ml_file_attack_type,
     )
     # For audit purposes, an override means the raw-evidence layer changed the
     # actual decision (verdict or attack type).  If it only adjusted the score or

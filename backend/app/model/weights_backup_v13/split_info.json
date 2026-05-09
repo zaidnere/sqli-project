@@ -1,0 +1,49 @@
+{
+  "strategy": "stratified_by_attack_type_and_language_when_available",
+  "seed": 42,
+  "train_count": 1058,
+  "val_count": 227,
+  "test_count": 228,
+  "train_indices_sha256": "48de40e3675692be46473b5d05cc51228a3697b401203890c2ff31d415ba707f",
+  "val_indices_sha256": "5bc0e6c752808d9eeecd691fd7799006ec78b21616505786a3c06a9aef34137e",
+  "test_indices_sha256": "9fe0aee62fd6556706950bdcc825377d9d675678c829a29133e3c006803e5442",
+  "binary_class_weights": {
+    "SAFE": 2.1306943893432617,
+    "VULNERABLE": 0.8381558656692505
+  },
+  "attack_type_class_weights": {
+    "NONE": 1.1939235925674438,
+    "IN_BAND": 0.8568309545516968,
+    "BLIND": 1.6404529809951782,
+    "SECOND_ORDER": 2.9342968463897705
+  },
+  "type_hardcase_boost": {
+    "NONE": 1.2999999523162842,
+    "IN_BAND": 1.149999976158142,
+    "BLIND": 1.7799999713897705,
+    "SECOND_ORDER": 1.4199999570846558
+  },
+  "binary_hardcase_boost": {
+    "SAFE": 1.159999966621399,
+    "VULNERABLE": 1.2200000286102295
+  },
+  "sample_weight_summary": {
+    "train_binary_mean": 3.4801511764526367,
+    "train_type_mean": 3.884782314300537,
+    "train_binary_max": 4.400000095367432,
+    "train_type_max": 7.199999809265137
+  },
+  "train_family_counts": {
+    "v13_flow_safe:python": 87,
+    "baseline:BLIND": 32,
+    "v13_flow_vuln:BLIND": 255,
+    "v13_flow_vuln:IN_BAND": 331,
+    "v13_flow_safe:php": 101,
+    "baseline:IN_BAND": 24,
+    "v13_flow_vuln:SECOND_ORDER": 98,
+    "v13_flow_safe:java": 23,
+    "baseline:NONE": 22,
+    "v13_flow_safe:javascript": 55,
+    "baseline:SECOND_ORDER": 30
+  }
+}

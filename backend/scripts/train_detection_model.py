@@ -1,9 +1,9 @@
-"""Model 1 Detection training workflow helper — V9 flow-balanced.
+"""Model 1 Detection training workflow helper — V17 type-balanced-flow.
 
 This file keeps the existing name so it can replace the previous
 backend/scripts/train_detection_model.py.
 
-V9 goal:
+V17 goal:
 - Keep the V8 ability to recognise SAFE bound/allowlisted/prepared flows.
 - Restore stronger vulnerable recall for raw ORDER BY, raw identifiers,
   alias execute, multi-query-one-unsafe, BLIND boolean flows and
@@ -16,9 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPORT = ROOT / "colab_export"
 WEIGHTS = ROOT / "app" / "model" / "weights"
 
-print("Model 1 Detection training workflow — V9 flow-balanced")
+print("Model 1 Detection training workflow — V17 type-balanced-flow")
 print()
-print("1. From backend, export V9 training data:")
+print("1. From backend, export V17 training data:")
 print("   set PYTHONPATH=.")
 print("   python scripts\\export_for_colab.py ^")
 print("     --out colab_export ^")

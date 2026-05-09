@@ -1,7 +1,7 @@
-# Auto-exported from model1_detection_aligned.ipynb — V9 flow-balanced
+# Auto-exported from model1_detection_aligned.ipynb — V17 type-balanced-flow
 # Run in Google Colab after uploading vocabulary.json and training_data.npz.
 
-# # Model 1 Detection — ML-primary v9
+# # Model 1 Detection — ML-primary v17
 #
 # This version focuses on stronger ML ownership of the final decision: sequence length 256, attack-type loss emphasis, live graphs, and training data enriched for Java safe builders, Python/PHP BLIND, and PHP SECOND_ORDER.
 
@@ -27,7 +27,7 @@
 # - prove that ML inference runs before fusion.
 
 """
-MODEL 1 — SQL Injection Detection ML-Primary v9 FLOW-BALANCED (CNN + Bi-LSTM, dual-head)
+MODEL 1 — SQL Injection Detection ML-Primary v17 ADVERSARIAL-FLOW (CNN + Bi-LSTM, dual-head)
 ============================================================
 Architecture (matches project proposal page 8 + page 31 + Gap A review):
   Raw Code → Clean → Tokenize → Normalize → Vectorize
@@ -37,7 +37,7 @@ Architecture (matches project proposal page 8 + page 31 + Gap A review):
 
 Both heads share the CNN+BiLSTM+Dense backbone.
 
-V9 goal: keep V8 SAFE-flow understanding while restoring stronger vulnerable recall and attack-type accuracy. This directly targets V8 misses on raw ORDER BY, raw identifiers, alias execute, multi-query-one-unsafe, BLIND boolean and SECOND_ORDER stored-fragment flows.
+V17 goal: keep V11 adversarial-flow learning while adding hard SAFE no-sink/comment-only/string-only examples, so SQL-looking text is not treated as SQLi without a real execution sink. It targets new-code failures without copying benchmark source files.
 
 Loss: hardcase-weighted BCE(vuln_head) + λ·hardcase-weighted CCE(type_head), λ = 0.90
 The vuln head is the proposal-defined primary classifier; the type head
@@ -46,7 +46,7 @@ is auxiliary (proposal page 8: "classify into vulnerable AND attack type").
 HOW TO USE THIS FILE IN GOOGLE COLAB:
 1. Upload this file to your Colab session
 2. Upload vocabulary.json   (from backend/colab_export/)
-3. Upload training_data.npz (from backend/colab_export/) — must contain X, y, y_type and V9 sample_weight_binary/sample_weight_type
+3. Upload training_data.npz (from backend/colab_export/) — must contain X, y, y_type and V17 sample_weight_binary/sample_weight_type
 4. Run all cells. Live training plots are displayed and saved to training_plots/.
    OR copy-paste each section into cells
 
@@ -189,7 +189,7 @@ print("\nSaved dataset_profile.json")
 # SECTION 2 — Architecture constants and training hyperparameters
 # CRITICAL: architecture values must match backend inference.
 # ─────────────────────────────────────────────────────────────────────────────
-MODEL_VERSION = "model1-cnn-bilstm-dual-head-flow-balanced-v9"
+MODEL_VERSION = "model1-cnn-bilstm-dual-head-js-second-order-focused-v17"
 NORMALIZER_VERSION = "semantic-normalizer-v2"  # update if backend normalizer semantics change
 DATASET_VERSION = DATASET_PROFILE.get("vocabulary_sha256", "unknown")[:12]
 
@@ -199,10 +199,10 @@ KERNEL_SIZE      = 3
 LSTM_HIDDEN      = 32    # per direction; BiLSTM output = 2 × 32 = 64
 DENSE_HIDDEN     = 64
 DENSE_IN         = CONV_FILTERS + 2 * LSTM_HIDDEN   # = 128
-MODEL_SEQ_LEN    = int(X.shape[1])                  # ML-primary v9 should be 256; saved in metadata
+MODEL_SEQ_LEN    = int(X.shape[1])                  # ML-primary v17 should be 256; saved in metadata
 
 NUM_TYPE_CLASSES = 4     # NONE, IN_BAND, BLIND, SECOND_ORDER
-LAMBDA_TYPE      = 1.05   # V9: type head is strengthened while binary SAFE/VULN remains primary
+LAMBDA_TYPE      = 1.30   # V17: strong but less overconfident type head; evidence should help separate direct IN_BAND from SECOND_ORDER
 
 EPOCHS   = 155
 LR_INIT  = 0.0042
@@ -229,7 +229,7 @@ ARCHITECTURE = {
     },
     "loss": "sample_weighted_BCE + lambda_type * sample_weighted_CCE",
     "lambda_type": LAMBDA_TYPE,
-    "hardcase_training": "V9 uses balanced hard-SAFE + hard-VULNERABLE flow calibration to improve raw ML recall, SAFE specificity and attack-type accuracy",
+    "hardcase_training": "V17 uses hard-SAFE no-sink/comment-only/string-only examples plus V11 time-BLIND/callable-alias vulnerable flows to improve SAFE specificity without losing vulnerable recall",
     "threshold": THRESHOLD,
 }
 
@@ -238,8 +238,8 @@ print(json.dumps(ARCHITECTURE, indent=2, ensure_ascii=False))
 PLOT_EVERY = 1
 PLOT_OUT_DIR = "training_plots"
 BEST_SCORE_TYPE_WEIGHT = 0.34
-BEST_SCORE_SAFE_WEIGHT = 0.24
-BEST_SCORE_BALANCED_WEIGHT = 0.42  # V9 checkpoint favors balanced SAFE/VULN behavior plus attack-type accuracy
+BEST_SCORE_SAFE_WEIGHT = 0.31
+BEST_SCORE_BALANCED_WEIGHT = 0.35  # V17 checkpoint favors balanced SAFE/VULN behavior and attack-type accuracy, while reducing SECOND_ORDER overclassification
 
 
 # ## Section 2b — Stratified train/validation/test split and class weights
@@ -302,12 +302,12 @@ def inverse_freq_weights(labels, n_classes):
 BIN_CLASS_WEIGHTS, bin_counts = inverse_freq_weights(y_train.astype(int), 2)
 TYPE_CLASS_WEIGHTS, type_counts_train = inverse_freq_weights(yt_train.astype(int), NUM_TYPE_CLASSES)
 
-# V9: V7 became too aggressive and marked many SAFE files as VULNERABLE.
+# V17: V7 became too aggressive and marked many SAFE files as VULNERABLE.
 # We therefore boost SAFE/NONE learning while keeping vulnerable classes strong enough
 # for high recall. This is training-time calibration, not runtime rule memorization.
-TYPE_HARDCASE_BOOST = np.array([1.35, 1.22, 1.35, 1.45], dtype=np.float32)  # NONE, IN_BAND, BLIND, SECOND_ORDER
+TYPE_HARDCASE_BOOST = np.array([1.25, 1.55, 1.76, 0.95], dtype=np.float32)  # V17: boost IN_BAND/BLIND, reduce SECOND_ORDER over-prediction
 TYPE_CLASS_WEIGHTS = (TYPE_CLASS_WEIGHTS * TYPE_HARDCASE_BOOST).astype(np.float32)
-BIN_HARDCASE_BOOST = np.array([1.20, 1.18], dtype=np.float32)  # balance SAFE specificity with vulnerable recall
+BIN_HARDCASE_BOOST = np.array([1.16, 1.22], dtype=np.float32)  # balance SAFE specificity with vulnerable recall
 BIN_CLASS_WEIGHTS = (BIN_CLASS_WEIGHTS * BIN_HARDCASE_BOOST).astype(np.float32)
 
 print("\nBinary train counts [SAFE, VULNERABLE]:", bin_counts.tolist())
@@ -812,7 +812,7 @@ def render_live_training_plots(history, epoch, show=True):
 
     axes[1, 2].plot(epochs, _series(history, "ml_primary_score"), label="checkpoint score")
     axes[1, 2].plot(epochs, _series(history, "val_none_f1"), label="NONE F1")
-    axes[1, 2].set_title("V9 balanced checkpoint score")
+    axes[1, 2].set_title("V17 balanced checkpoint score")
     axes[1, 2].set_xlabel("epoch")
     axes[1, 2].legend()
 
@@ -911,7 +911,7 @@ for epoch in range(1, EPOCHS + 1):
         f"score={history[-1]['ml_primary_score']:.3f}  lr={lr:.5f}  ({elapsed:.1f}s)"
     )
 
-    # V9 checkpoint: binary F1 remains primary, but we explicitly reward
+    # V17 checkpoint: binary F1 remains primary, but we explicitly reward
     # SAFE specificity / NONE F1 so the best checkpoint cannot be an
     # all-vulnerable model. Attack-type macro-F1 still matters for IN_BAND,
     # BLIND and SECOND_ORDER classification.
@@ -1177,7 +1177,7 @@ MODEL_METADATA = {
         "uses_sample_weight_type": bool("sample_weight_type" in npz.files),
         "type_hardcase_boost": SPLIT_INFO.get("type_hardcase_boost"),
         "binary_hardcase_boost": SPLIT_INFO.get("binary_hardcase_boost"),
-        "target_problem": "V9: keep vulnerable recall high while reducing raw ML false positives on prepared/bindings/allowlist/query-builder SAFE flow",
+        "target_problem": "V17: keep vulnerable recall high while reducing raw ML false positives on SAFE comments/strings/no-sink examples, prepared/bindings/allowlist/query-builder SAFE flow",
     },
     "split_info": SPLIT_INFO,
     "dataset_profile": DATASET_PROFILE,
