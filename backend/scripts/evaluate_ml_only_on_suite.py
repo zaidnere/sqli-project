@@ -31,7 +31,12 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.preprocessing.code_cleaner import clean_code
 from app.preprocessing.tokenizer import tokenize_code
-from app.preprocessing.normalizer import normalize_tokens
+from app.preprocessing.normalizer import (
+    normalize_tokens,
+    extract_safe_returning_funcs,
+    extract_numeric_returning_funcs,
+    extract_db_returning_funcs,
+)
 from app.preprocessing.chunker import split_into_chunks
 from app.vectorization.vocabulary import build_fixed_vocabulary
 from app.vectorization.vectorizer import vectorize_tokens
@@ -70,7 +75,7 @@ def read_manifest(root: Path) -> dict[str, Tuple[str, str]]:
     return out
 
 
-def ml_predict_code(code: str, filename: str, sequence_length: int) -> dict:
+def ml_predict_code(code: str, filename: str, sequence_length: int, threshold: float = 0.50) -> dict:
     vocab = build_fixed_vocabulary()
 
     # split_into_chunks expects a language name and returns tuples:
@@ -79,6 +84,11 @@ def ml_predict_code(code: str, filename: str, sequence_length: int) -> dict:
     # whole tuple into clean_code(), causing:
     #     TypeError: expected string or bytes-like object, got 'tuple'
     language = EXT_TO_LANG.get(Path(filename).suffix.lower(), "python")
+    full_tokens = tokenize_code(clean_code(code))
+    file_safe_funcs = extract_safe_returning_funcs(full_tokens)
+    file_numeric_funcs = extract_numeric_returning_funcs(full_tokens)
+    file_db_loaded_funcs = extract_db_returning_funcs(full_tokens)
+
     chunks = split_into_chunks(code, language)
     if not chunks:
         chunks = [("__file__", code)]
@@ -91,7 +101,13 @@ def ml_predict_code(code: str, filename: str, sequence_length: int) -> dict:
             chunk_name, chunk_code = f"chunk_{idx}", chunk_item
 
         cleaned = clean_code(chunk_code)
-        tokens = normalize_tokens(tokenize_code(cleaned))
+        raw_tokens = tokenize_code(cleaned)
+        tokens = normalize_tokens(
+            raw_tokens,
+            extra_safe_funcs=file_safe_funcs,
+            extra_numeric_funcs=file_numeric_funcs,
+            extra_db_loaded_funcs=file_db_loaded_funcs,
+        )
         vec = vectorize_tokens(tokens, vocab, max_length=sequence_length)
         pred = run_inference(vec["tokenIds"])
         if pred is None:
@@ -103,8 +119,8 @@ def ml_predict_code(code: str, filename: str, sequence_length: int) -> dict:
                 attack = "NONE"
             best = {
                 "ml_available": True,
-                "ml_verdict": "VULNERABLE" if risk >= 0.50 else "SAFE",
-                "ml_attack_type": attack if risk >= 0.50 else "NONE",
+                "ml_verdict": "VULNERABLE" if risk >= threshold else "SAFE",
+                "ml_attack_type": attack if risk >= threshold else "NONE",
                 "ml_risk": risk,
                 "chunk_index": idx,
                 "chunk_name": chunk_name,
@@ -119,6 +135,7 @@ def main() -> int:
     ap.add_argument("--suite", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--sequence-length", type=int, default=256)
+    ap.add_argument("--threshold", type=float, default=0.50, help="ML-only binary threshold for SAFE/VULNERABLE.")
     args = ap.parse_args()
 
     out_dir = Path(args.out)
@@ -141,7 +158,7 @@ def main() -> int:
                 continue
             exp_label, exp_attack = expected
             code = f.read_text(encoding="utf-8", errors="replace")
-            pred = ml_predict_code(code, f.name, args.sequence_length)
+            pred = ml_predict_code(code, f.name, args.sequence_length, threshold=args.threshold)
             ml_label = pred["ml_verdict"]
             ml_attack = pred["ml_attack_type"]
             binary_ok = (ml_label == exp_label)
@@ -175,6 +192,7 @@ def main() -> int:
     md = []
     md.append("# ML-only Suite Evaluation\n")
     md.append(f"- Total: **{total}**\n")
+    md.append(f"- Threshold: **{args.threshold:.2f}**\n")
     md.append(f"- Binary ML accuracy: **{bin_ok}/{total}** ({(bin_ok/max(1,total))*100:.2f}%)\n")
     md.append(f"- Full ML label+type accuracy: **{full_ok}/{total}** ({(full_ok/max(1,total))*100:.2f}%)\n")
     md.append(f"- Expected attack distribution: `{dict(by_exp)}`\n")

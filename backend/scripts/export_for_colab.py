@@ -176,8 +176,22 @@ def audit_focus_from_csv(paths: List[str]) -> Dict[str, int]:
                 # Audit CSVs contain ml_predicted_*; API/direct test-result CSVs contain actual_* only.
                 # For V18 focusing, actual_* is enough to learn which adversarial family failed,
                 # while still never copying benchmark source code.
-                ml_v = (row.get("ml_predicted_verdict") or row.get("actual_verdict") or row.get("Actual") or "").strip().upper()
-                ml_t = (row.get("ml_predicted_attack_type") or row.get("actual_type") or row.get("Actual Type") or "").strip().upper()
+                ml_v = (
+                    row.get("ml_predicted_verdict")
+                    or row.get("ml_label")
+                    or row.get("actual_verdict")
+                    or row.get("Actual")
+                    or ""
+                ).strip().upper()
+                ml_t = (
+                    row.get("ml_predicted_attack_type")
+                    or row.get("ml_attack_type")
+                    or row.get("actual_type")
+                    or row.get("Actual Type")
+                    or ""
+                ).strip().upper()
+                if ml_v == "SUSPICIOUS":
+                    ml_v = "VULNERABLE"
                 lang = file_name.split("/")[0].strip().lower() or "unknown"
                 fam = _family_from_file(file_name)
 
@@ -1789,7 +1803,66 @@ def make_profile(arrays: dict, vocab: dict, sequence_length: int, duplicates_dro
     profile["sample_family_counts"] = dict(Counter(map(str, arrays.get("sample_family", []))))
     profile["avg_sample_weight_binary"] = float(np.mean(arrays["sample_weight_binary"])) if len(arrays["sample_weight_binary"]) else 1.0
     profile["avg_sample_weight_type"] = float(np.mean(arrays["sample_weight_type"])) if len(arrays["sample_weight_type"]) else 1.0
+    if "balance_resample_source_index" in arrays:
+        profile["binary_balance_resampled_count"] = int(len(arrays["balance_resample_source_index"]))
+        profile["binary_balance_resampled_unique_sources"] = int(len(set(map(int, arrays["balance_resample_source_index"]))))
     return profile
+
+
+def _append_resampled_rows(arrays: dict, indices: np.ndarray, family_label: str) -> dict:
+    """Append selected rows to every exported array, preserving metadata alignment."""
+    if len(indices) == 0:
+        return arrays
+    out = {}
+    for key, value in arrays.items():
+        extra = value[indices]
+        if key == "sample_family":
+            extra = np.array([f"{str(v)}|{family_label}" for v in extra])
+        elif key == "source_id":
+            extra = np.array([f"{str(v)}|resampled_ml95_{i}" for i, v in enumerate(extra)])
+        elif key == "path":
+            extra = np.array([f"resampled_ml95/{i:05d}_{str(v)}" for i, v in enumerate(extra)])
+        elif key == "suite_name":
+            extra = np.array(["generated_v18_ml95_binary_balance" for _ in extra])
+        out[key] = np.concatenate([value, extra])
+    out["balance_resample_source_index"] = indices.astype(np.int32)
+    return out
+
+
+def balance_binary_arrays(arrays: dict, target_safe_ratio: float, seed: int = 42) -> dict:
+    """Optionally resample the minority binary class for ML-only binary training.
+
+    This does not copy benchmark source files and does not alter production rules.
+    It only changes the Colab training export so the binary head does not learn
+    an accidental all-vulnerable or all-safe prior from generated hardcases.
+    """
+    if target_safe_ratio <= 0:
+        return arrays
+    y = arrays["y"].astype(int)
+    total = len(y)
+    if total == 0:
+        return arrays
+    safe_idx = np.where(y == 0)[0]
+    vuln_idx = np.where(y == 1)[0]
+    safe_n = len(safe_idx)
+    vuln_n = len(vuln_idx)
+    if safe_n == 0 or vuln_n == 0:
+        return arrays
+    target_safe_ratio = max(0.05, min(0.95, float(target_safe_ratio)))
+    rng = np.random.default_rng(seed)
+    current_safe_ratio = safe_n / total
+    if current_safe_ratio < target_safe_ratio:
+        # Need: (safe_n + k) / (total + k) = target_safe_ratio
+        k = int(np.ceil((target_safe_ratio * total - safe_n) / max(1e-9, 1.0 - target_safe_ratio)))
+        chosen = rng.choice(safe_idx, size=max(0, k), replace=True)
+        return _append_resampled_rows(arrays, chosen.astype(np.int32), "binary_balance_safe_resample")
+    if current_safe_ratio > target_safe_ratio:
+        # Rare case: oversample vulnerable instead.
+        target_vuln_ratio = 1.0 - target_safe_ratio
+        k = int(np.ceil((target_vuln_ratio * total - vuln_n) / max(1e-9, 1.0 - target_vuln_ratio)))
+        chosen = rng.choice(vuln_idx, size=max(0, k), replace=True)
+        return _append_resampled_rows(arrays, chosen.astype(np.int32), "binary_balance_vuln_resample")
+    return arrays
 
 
 def main() -> int:
@@ -1801,6 +1874,7 @@ def main() -> int:
     ap.add_argument("--safe-calibration-per-family", type=int, default=7, help="SAFE hard examples per safe family/language/seed")
     ap.add_argument("--generated-seeds", nargs="*", type=int, default=[20260630, 20260701, 20260702])
     ap.add_argument("--audit-csv", action="append", default=[], help="Optional audit CSV used only to focus generated families; no source copied.")
+    ap.add_argument("--binary-balance-target", type=float, default=0.48, help="Target SAFE ratio after export-time resampling for ML-only binary training. Use 0 to disable.")
     args = ap.parse_args()
 
     out_dir = Path(args.out)
@@ -1874,9 +1948,13 @@ def main() -> int:
 
     print("[4/5] Writing arrays and vocabulary...")
     arrays = builder.arrays()
+    arrays = balance_binary_arrays(arrays, args.binary_balance_target, seed=42)
+    resample_source_index = arrays.pop("balance_resample_source_index", None)
     rng = np.random.default_rng(42)
     perm = rng.permutation(len(arrays["y"]))
     arrays = {k: v[perm] for k, v in arrays.items()}
+    if resample_source_index is not None:
+        arrays["balance_resample_source_index"] = resample_source_index
 
     save_vocabulary(vocab, str(out_dir / "vocabulary.json"))
     np.savez(out_dir / "training_data.npz", **arrays)
@@ -1892,6 +1970,7 @@ def main() -> int:
         "safe_calibration_per_family": args.safe_calibration_per_family,
         "audit_csvs": args.audit_csv,
         "audit_focus_counts": focus,
+        "binary_balance_target": args.binary_balance_target,
         "anti_leakage_note": "Audit CSVs focus generated family counts only; benchmark source files are not copied.",
         "main_goal": "V18 semantic-input: add normalizer/vocabulary tokens for stored/config/cache fragments reaching SQL syntax, then retrain the CNN+BiLSTM on those signals while preserving V14/V15/V17 stability",
         "profile": profile,

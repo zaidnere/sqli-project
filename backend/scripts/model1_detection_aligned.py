@@ -189,8 +189,8 @@ print("\nSaved dataset_profile.json")
 # SECTION 2 — Architecture constants and training hyperparameters
 # CRITICAL: architecture values must match backend inference.
 # ─────────────────────────────────────────────────────────────────────────────
-MODEL_VERSION = "model1-cnn-bilstm-dual-head-semantic-flow-v18"
-NORMALIZER_VERSION = "semantic-normalizer-v18-flow"  # update if backend normalizer semantics change
+MODEL_VERSION = "model1-cnn-bilstm-dual-head-v18-ml95-binary"
+NORMALIZER_VERSION = "semantic-normalizer-v18-ml95-flow"  # update if backend normalizer semantics change
 DATASET_VERSION = DATASET_PROFILE.get("vocabulary_sha256", "unknown")[:12]
 
 EMBED_DIM        = 64
@@ -229,8 +229,8 @@ ARCHITECTURE = {
     },
     "loss": "sample_weighted_BCE + lambda_type * sample_weighted_CCE",
     "lambda_type": LAMBDA_TYPE,
-    "hardcase_training": "V17 uses hard-SAFE no-sink/comment-only/string-only examples plus V11 time-BLIND/callable-alias vulnerable flows to improve SAFE specificity without losing vulnerable recall",
-    "threshold": THRESHOLD,
+    "hardcase_training": "V18-ML95 focuses the raw ML binary head on SAFE/VULNERABLE accuracy using hard SAFE counterexamples, vulnerable recall families, helper/provenance context, binary balancing, and threshold calibration",
+    "threshold": THRESHOLD_CALIBRATED if "THRESHOLD_CALIBRATED" in globals() else THRESHOLD,
 }
 
 print(json.dumps(ARCHITECTURE, indent=2, ensure_ascii=False))
@@ -747,6 +747,28 @@ def evaluate(Xs, ys, ys_type, threshold=0.5):
     }
 
 
+def calibrate_binary_threshold(Xs, ys, ys_type, thresholds=None):
+    """Sweep thresholds on validation data and pick a balanced ML-only binary point.
+
+    The project target is ML-only SAFE/VULNERABLE accuracy >= 95%, but this is
+    still a security detector, so ties prefer higher recall and fewer false
+    negatives. Attack-type metrics are reported but do not drive this threshold.
+    """
+    if thresholds is None:
+        thresholds = np.round(np.arange(0.30, 0.701, 0.01), 2)
+    rows = []
+    best = None
+    for th in thresholds:
+        m = evaluate(Xs, ys, ys_type, threshold=float(th))
+        score = (m["acc"] + m["f1"] + m["balanced_acc"]) / 3.0
+        row = {"threshold": float(th), "selection_score": float(score), **m}
+        rows.append(row)
+        key = (score, m["rec"], -m["fn"], m["spec"], m["acc"])
+        if best is None or key > best[0]:
+            best = (key, row)
+    return best[1], rows
+
+
 # ## Section 8 — Training loop (joint loss)
 #
 # Per-sample SGD on the joint loss. Best-model selection uses the binary F1 (the proposal-defined primary metric); attack-type metrics are tracked but don't drive checkpointing.
@@ -981,8 +1003,18 @@ dense1_W      = best["dense1_W"];      dense1_b      = best["dense1_b"]
 dense2_W      = best["dense2_W"];      dense2_b      = best["dense2_b"]
 dense2_type_W = best["dense2_type_W"]; dense2_type_b = best["dense2_type_b"]
 
-test_m = evaluate(X_test, y_test, yt_test, threshold=THRESHOLD)
-val_m  = evaluate(X_val,  y_val,  yt_val,  threshold=THRESHOLD)
+threshold_best, threshold_sweep = calibrate_binary_threshold(X_val, y_val, yt_val)
+THRESHOLD_CALIBRATED = float(threshold_best["threshold"])
+print("=" * 70)
+print("VALIDATION THRESHOLD CALIBRATION")
+print("=" * 70)
+for row in threshold_sweep:
+    if row["threshold"] in (0.30, 0.40, 0.50, 0.60, 0.70) or row["threshold"] == THRESHOLD_CALIBRATED:
+        print(f"th={row['threshold']:.2f} acc={row['acc']:.4f} f1={row['f1']:.4f} recall={row['rec']:.4f} spec={row['spec']:.4f} fp={row['fp']} fn={row['fn']}")
+print(f"Selected threshold: {THRESHOLD_CALIBRATED:.2f}")
+
+test_m = evaluate(X_test, y_test, yt_test, threshold=THRESHOLD_CALIBRATED)
+val_m  = evaluate(X_val,  y_val,  yt_val,  threshold=THRESHOLD_CALIBRATED)
 
 print("=" * 70)
 print("FINAL MODEL 1 EVALUATION (Held-out Test Set)")
@@ -1022,6 +1054,8 @@ print("=" * 70)
 
 # Save machine-readable metrics for documentation and backend metadata.
 MODEL_METRICS = {
+    "selected_threshold": THRESHOLD_CALIBRATED,
+    "threshold_sweep": [{k: (v.tolist() if hasattr(v, "tolist") else v) for k, v in row.items() if k != "type_cm"} for row in threshold_sweep],
     "validation": {k: (v.tolist() if hasattr(v, "tolist") else v) for k, v in val_m.items()},
     "test": {k: (v.tolist() if hasattr(v, "tolist") else v) for k, v in test_m.items()},
 }
@@ -1169,7 +1203,7 @@ MODEL_METADATA = {
     "pad_id": int(PAD_ID),
     "unk_id": int(UNK_ID),
     "architecture": ARCHITECTURE,
-    "threshold": THRESHOLD,
+    "threshold": THRESHOLD_CALIBRATED if "THRESHOLD_CALIBRATED" in globals() else THRESHOLD,
     "class_weights": SPLIT_INFO["binary_class_weights"],
     "attack_type_class_weights": SPLIT_INFO["attack_type_class_weights"],
     "hardcase_training": {
@@ -1177,7 +1211,7 @@ MODEL_METADATA = {
         "uses_sample_weight_type": bool("sample_weight_type" in npz.files),
         "type_hardcase_boost": SPLIT_INFO.get("type_hardcase_boost"),
         "binary_hardcase_boost": SPLIT_INFO.get("binary_hardcase_boost"),
-        "target_problem": "V17: keep vulnerable recall high while reducing raw ML false positives on SAFE comments/strings/no-sink examples, prepared/bindings/allowlist/query-builder SAFE flow",
+        "target_problem": "V18-ML95: improve raw ML-only SAFE/VULNERABLE binary accuracy toward >=95% while preserving vulnerable recall and reducing SAFE false positives",
     },
     "split_info": SPLIT_INFO,
     "dataset_profile": DATASET_PROFILE,
@@ -1209,7 +1243,7 @@ print("  - sqli_detection_label_maps.json")
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 10c — Inference proof: token IDs → raw ML prediction
 # ─────────────────────────────────────────────────────────────────────────────
-def ml_predict_raw(token_ids, threshold=THRESHOLD):
+def ml_predict_raw(token_ids, threshold=THRESHOLD_CALIBRATED if "THRESHOLD_CALIBRATED" in globals() else THRESHOLD):
     risk, type_probs, _ = forward(token_ids)
     type_id = int(np.argmax(type_probs))
     return {
