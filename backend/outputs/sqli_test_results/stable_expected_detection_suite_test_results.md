@@ -1,8 +1,8 @@
 # SQLi Test Suite Results
 
 - Total: **40**
-- Passed: **39**
-- Failed: **1**
+- Passed: **40**
+- Failed: **0**
 
 | # | File | Expected | Actual | Risk | Pass |
 |---:|---|---|---|---:|---|
@@ -18,7 +18,7 @@
 | 10 | `python/010_SAFE_db_loaded_value_as_param.py` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
 | 11 | `javascript/011_SAFE_parameterized_get.js` | SAFE / NONE | SAFE / NONE | 0.006 | ✅ |
 | 12 | `javascript/012_SAFE_parameterized_insert.js` | SAFE / NONE | SAFE / NONE | 0.006 | ✅ |
-| 13 | `javascript/013_IN_BAND_template_email_search.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
+| 13 | `javascript/013_IN_BAND_template_email_search.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
 | 14 | `javascript/014_IN_BAND_concat_update_status.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
 | 15 | `javascript/015_BLIND_login_row_exists.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
 | 16 | `javascript/016_BLIND_count_gt_zero.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
@@ -40,19 +40,9 @@
 | 32 | `php/032_SAFE_pdo_update_parameterized.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
 | 33 | `php/033_SAFE_placeholder_in_list.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
 | 34 | `php/034_BLIND_login_num_rows.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
-| 35 | `php/035_BLIND_count_bool.php` | VULNERABLE / BLIND | VULNERABLE / IN_BAND | 0.9994 | ❌ |
+| 35 | `php/035_BLIND_count_bool.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9994 | ✅ |
 | 36 | `php/036_SECOND_ORDER_saved_where_clause.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
 | 37 | `php/037_SECOND_ORDER_stored_query.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
 | 38 | `php/038_SAFE_db_loaded_value_as_param.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
 | 39 | `php/039_SAFE_plain_service_no_sql.php` | SAFE / NONE | SAFE / NONE | 0.0001 | ✅ |
 | 40 | `php/040_SAFE_pdo_static_query_no_input.php` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-
-## Failures
-
-### `php/035_BLIND_count_bool.php`
-
-- Expected: `VULNERABLE / BLIND`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9994`
-- Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected (found in function 'canExport'): SQL_CONCAT. Risk score: 100%. File analysed in 5 chunk(s) — worst chunk scored 100%.

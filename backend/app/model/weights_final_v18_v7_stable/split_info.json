@@ -1,0 +1,51 @@
+{
+  "strategy": "stratified_by_attack_type_and_language_when_available",
+  "seed": 42,
+  "train_count": 1523,
+  "val_count": 327,
+  "test_count": 327,
+  "train_indices_sha256": "915e6c1224fd6036d01a5326799274c34baa3d777bd6f6d37143e4c0378da6bc",
+  "val_indices_sha256": "8ad9a6f09b98f02bbfb819a49a96fa33e75c7d4e35328060476f37e9170eb596",
+  "test_indices_sha256": "d5e1aad6ffcccac880276d068d780a9ccd39b25d106571d374acdfbe330b666a",
+  "binary_class_weights": {
+    "SAFE": 2.288445472717285,
+    "VULNERABLE": 0.8170889019966125
+  },
+  "attack_type_class_weights": {
+    "NONE": 1.2329986095428467,
+    "IN_BAND": 1.3853579759597778,
+    "BLIND": 2.107295513153076,
+    "SECOND_ORDER": 0.9203880429267883
+  },
+  "type_hardcase_boost": {
+    "NONE": 1.25,
+    "IN_BAND": 1.5499999523162842,
+    "BLIND": 1.7599999904632568,
+    "SECOND_ORDER": 0.949999988079071
+  },
+  "binary_hardcase_boost": {
+    "SAFE": 1.159999966621399,
+    "VULNERABLE": 1.2200000286102295
+  },
+  "sample_weight_summary": {
+    "train_binary_mean": 3.7264609336853027,
+    "train_type_mean": 4.59106969833374,
+    "train_binary_max": 5.199999809265137,
+    "train_type_max": 7.599999904632568
+  },
+  "train_family_counts": {
+    "v18_flow_safe:php": 109,
+    "baseline:SECOND_ORDER": 30,
+    "v18_flow_vuln:IN_BAND": 399,
+    "v18_js_second_order_focus": 95,
+    "v18_flow_safe:javascript": 101,
+    "v18_flow_vuln:BLIND": 288,
+    "v18_flow_vuln:SECOND_ORDER": 268,
+    "v18_flow_safe:python": 116,
+    "baseline:NONE": 28,
+    "v18_flow_safe:java": 23,
+    "baseline:BLIND": 30,
+    "baseline:IN_BAND": 27,
+    "v18_js_safe_sequelize_focus": 9
+  }
+}

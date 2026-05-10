@@ -38,14 +38,14 @@
 | 30 | `python/030_SECOND_ORDER_unseen_case_vqbzrth.py` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
 | 31 | `python/031_SECOND_ORDER_unseen_case_uguoimh.py` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
 | 32 | `python/032_SECOND_ORDER_unseen_case_fexeedd.py` |  / NONE | VULNERABLE / SECOND_ORDER | 1.0 | ❌ |
-| 33 | `javascript/033_SAFE_unseen_case_hzrgino.js` |  / NONE | SAFE / NONE | 0.08 | ❌ |
-| 34 | `javascript/034_SAFE_unseen_case_bnagwhn.js` |  / NONE | SAFE / NONE | 0.08 | ❌ |
-| 35 | `javascript/035_SAFE_unseen_case_qxtzpuc.js` |  / NONE | SAFE / NONE | 0.08 | ❌ |
-| 36 | `javascript/036_SAFE_unseen_case_qpkxyar.js` |  / NONE | SAFE / NONE | 0.08 | ❌ |
-| 37 | `javascript/037_SAFE_unseen_case_zqxcycv.js` |  / NONE | SAFE / NONE | 0.08 | ❌ |
-| 38 | `javascript/038_SAFE_unseen_case_kzpozfl.js` |  / NONE | SAFE / NONE | 0.08 | ❌ |
-| 39 | `javascript/039_SAFE_unseen_case_xsccfhj.js` |  / NONE | SAFE / NONE | 0.08 | ❌ |
-| 40 | `javascript/040_SAFE_unseen_case_fhkdske.js` |  / NONE | SAFE / NONE | 0.08 | ❌ |
+| 33 | `javascript/033_SAFE_unseen_case_hzrgino.js` |  / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 34 | `javascript/034_SAFE_unseen_case_bnagwhn.js` |  / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 35 | `javascript/035_SAFE_unseen_case_qxtzpuc.js` |  / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 36 | `javascript/036_SAFE_unseen_case_qpkxyar.js` |  / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 37 | `javascript/037_SAFE_unseen_case_zqxcycv.js` |  / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 38 | `javascript/038_SAFE_unseen_case_kzpozfl.js` |  / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 39 | `javascript/039_SAFE_unseen_case_xsccfhj.js` |  / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
+| 40 | `javascript/040_SAFE_unseen_case_fhkdske.js` |  / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
 | 41 | `javascript/041_IN_BAND_unseen_case_pckoedw.js` |  / NONE | VULNERABLE / IN_BAND | 1.0 | ❌ |
 | 42 | `javascript/042_IN_BAND_unseen_case_yxxdisb.js` |  / NONE | VULNERABLE / IN_BAND | 1.0 | ❌ |
 | 43 | `javascript/043_IN_BAND_unseen_case_rdkttbs.js` |  / NONE | VULNERABLE / IN_BAND | 1.0 | ❌ |
@@ -388,58 +388,66 @@
 ### `javascript/033_SAFE_unseen_case_hzrgino.js`
 
 - Expected: ` / NONE`
-- Actual: `SAFE / NONE`
-- Risk score: `0.08`
-- Explanation: No SQL injection patterns detected. Risk score: 8%.
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 1 chunk(s) — worst chunk scored 90%.
 
 ### `javascript/034_SAFE_unseen_case_bnagwhn.js`
 
 - Expected: ` / NONE`
-- Actual: `SAFE / NONE`
-- Risk score: `0.08`
-- Explanation: No SQL injection patterns detected. Risk score: 8%.
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 1 chunk(s) — worst chunk scored 90%.
 
 ### `javascript/035_SAFE_unseen_case_qxtzpuc.js`
 
 - Expected: ` / NONE`
-- Actual: `SAFE / NONE`
-- Risk score: `0.08`
-- Explanation: No SQL injection patterns detected. Risk score: 8%.
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 1 chunk(s) — worst chunk scored 90%.
 
 ### `javascript/036_SAFE_unseen_case_qpkxyar.js`
 
 - Expected: ` / NONE`
-- Actual: `SAFE / NONE`
-- Risk score: `0.08`
-- Explanation: No SQL injection patterns detected. Risk score: 8%.
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 1 chunk(s) — worst chunk scored 90%.
 
 ### `javascript/037_SAFE_unseen_case_zqxcycv.js`
 
 - Expected: ` / NONE`
-- Actual: `SAFE / NONE`
-- Risk score: `0.08`
-- Explanation: No SQL injection patterns detected. Risk score: 8%.
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 1 chunk(s) — worst chunk scored 90%.
 
 ### `javascript/038_SAFE_unseen_case_kzpozfl.js`
 
 - Expected: ` / NONE`
-- Actual: `SAFE / NONE`
-- Risk score: `0.08`
-- Explanation: No SQL injection patterns detected. Risk score: 8%.
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 1 chunk(s) — worst chunk scored 90%.
 
 ### `javascript/039_SAFE_unseen_case_xsccfhj.js`
 
 - Expected: ` / NONE`
-- Actual: `SAFE / NONE`
-- Risk score: `0.08`
-- Explanation: No SQL injection patterns detected. Risk score: 8%.
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 1 chunk(s) — worst chunk scored 90%.
 
 ### `javascript/040_SAFE_unseen_case_fhkdske.js`
 
 - Expected: ` / NONE`
-- Actual: `SAFE / NONE`
-- Risk score: `0.08`
-- Explanation: No SQL injection patterns detected. Risk score: 8%.
+- Actual: `VULNERABLE / IN_BAND`
+- Risk score: `0.9`
+- Patterns: `SQL_CONCAT`
+- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 1 chunk(s) — worst chunk scored 90%.
 
 ### `javascript/041_IN_BAND_unseen_case_pckoedw.js`
 
