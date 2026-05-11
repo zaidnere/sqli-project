@@ -1,23 +1,23 @@
 {
   "exporterVersion": "model2_context_features_v3",
-  "n_samples": 3840,
+  "n_samples": 5120,
   "fix_counts": {
-    "A": 960,
-    "B": 960,
-    "C": 960,
-    "D": 960
+    "A": 1280,
+    "B": 1280,
+    "C": 1280,
+    "D": 1280
   },
   "language_counts": {
-    "python": 960,
-    "javascript": 960,
-    "java": 960,
-    "php": 960
+    "python": 1280,
+    "javascript": 1280,
+    "java": 1280,
+    "php": 1280
   },
   "attack_type_counts": {
     "NONE": 0,
-    "IN_BAND": 2644,
-    "BLIND": 236,
-    "SECOND_ORDER": 960
+    "IN_BAND": 3526,
+    "BLIND": 314,
+    "SECOND_ORDER": 1280
   },
   "evidence_features": [
     "SQL_STRING",
