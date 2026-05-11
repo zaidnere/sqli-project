@@ -1,23 +1,23 @@
 {
-  "exporterVersion": "model2_attack_all_v6",
-  "n_samples": 10240,
+  "exporterVersion": "model2_attack_all_v6_targeted_v8_second_order_augmented",
+  "n_samples": 12480,
   "fix_counts": {
-    "A": 2560,
-    "B": 2560,
-    "C": 2560,
-    "D": 2560
+    "A": 3120,
+    "B": 3120,
+    "C": 3120,
+    "D": 3120
   },
   "language_counts": {
-    "python": 2560,
-    "javascript": 2560,
-    "java": 2560,
-    "php": 2560
+    "python": 3120,
+    "javascript": 3120,
+    "java": 3120,
+    "php": 3120
   },
   "attack_type_counts": {
     "NONE": 0,
-    "IN_BAND": 6933,
-    "BLIND": 747,
-    "SECOND_ORDER": 2560
+    "IN_BAND": 8503,
+    "BLIND": 857,
+    "SECOND_ORDER": 3120
   },
   "evidence_features": [
     "SQL_STRING",
@@ -74,14 +74,37 @@
     "Targeted v7 augmentation appends balanced hard cases without deleting the export folder.",
     "Model 1 remains frozen/read-only; this augmentation does not modify Model 1.",
     "Targeted v7 augmentation appends balanced hard cases without deleting the export folder.",
+    "Model 1 remains frozen/read-only; this augmentation does not modify Model 1.",
+    "Targeted remaining-failures v9 augmentation appends balanced hard cases for final D/B classification misses.",
     "Model 1 remains frozen/read-only; this augmentation does not modify Model 1."
   ],
-  "augmentationVersion": "model2_targeted_failure_v7",
-  "added_samples": 1280,
-  "samples_per_class_language_extra": 80,
+  "augmentationVersion": "model2_targeted_remaining_failures_v9",
+  "added_samples": 960,
+  "samples_per_class_language_extra": 60,
   "targeted_failure_families": [
     "Second-order saved widget/config/cache/query fragments should classify as D",
     "Obfuscated execute aliases with direct value SQLi should classify as A",
     "B/C anchor cases preserve identifier whitelist and complex-builder boundaries"
+  ],
+  "augmentationHistory": [
+    {
+      "version": "targeted_v8_second_order_only",
+      "old_n_samples": 10240,
+      "appended_samples": 1280,
+      "new_n_samples": 11520,
+      "goal": "Fix final remaining D->A second-order classifications while preserving A/B/C anchors.",
+      "target_failures": [
+        "python/004_SECOND_ORDER_saved_widget_filter.py",
+        "javascript/018_SECOND_ORDER_stored_query_executor.js",
+        "python/018_SECOND_ORDER_config_fragment.py",
+        "javascript/040_SECOND_ORDER_saved_filter_builder.js",
+        "python/008_IN_BAND_obfuscated_alias_execute.py"
+      ]
+    }
+  ],
+  "targeted_failure_families_v9": [
+    "D: saved widget where_fragment / stored query_sql / config archival_predicate executed later",
+    "B: dynamic ORDER BY/table identifier where allowlist is computed but raw variable is still used",
+    "A/C anchors preserve direct-value and complex-builder boundaries"
   ]
 }
