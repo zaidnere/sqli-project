@@ -1,0 +1,58 @@
+{
+  "testAccuracy": 1.0,
+  "testMacroF1": 1.0,
+  "perClass": {
+    "A": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 468
+    },
+    "B": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 468
+    },
+    "C": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 468
+    },
+    "D": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "support": 468
+    }
+  },
+  "confusionMatrix": [
+    [
+      468,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      468,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      468,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      468
+    ]
+  ],
+  "bestValidationScore": 1.0,
+  "bestEpoch": 2
+}

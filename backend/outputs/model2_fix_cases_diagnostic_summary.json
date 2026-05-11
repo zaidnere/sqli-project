@@ -1,0 +1,35 @@
+{
+  "suite": "model2_fix_cases_direct_zip_v4_output_by_type",
+  "suiteType": "diagnostic",
+  "totalCases": 21,
+  "checkedCases": 21,
+  "passedChecked": 20,
+  "failedChecked": 1,
+  "crashedCases": 0,
+  "modelExpectedChecked": 21,
+  "modelExpectedPassed": 20,
+  "modelExpectedFailed": 1,
+  "finalExpectedChecked": 21,
+  "finalExpectedPassed": 20,
+  "finalExpectedFailed": 1,
+  "contentChecked": 21,
+  "contentPassed": 20,
+  "contentFailed": 1,
+  "modelFixTypeCounts": {
+    "A": 8,
+    "B": 6,
+    "C": 3,
+    "D": 4
+  },
+  "finalFixTypeCounts": {
+    "A": 8,
+    "B": 6,
+    "C": 3,
+    "D": 4
+  },
+  "suiteSources": {
+    "diagnostic.json": 21
+  },
+  "csv": "outputs\\model2_fix_cases_diagnostic_results.csv",
+  "json": "outputs\\model2_fix_cases_diagnostic_summary.json"
+}

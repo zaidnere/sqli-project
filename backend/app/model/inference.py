@@ -24,7 +24,8 @@ Integration:
 
 import os
 import logging
-from typing import Optional, List
+from typing import Optional, List, Tuple
+from functools import lru_cache
 
 from app.model.sqli_detector import SQLiDetector
 
@@ -71,6 +72,17 @@ def _load_model() -> Optional[SQLiDetector]:
         return None
 
 
+@lru_cache(maxsize=4096)
+def _run_inference_cached(token_ids: Tuple[int, ...]) -> Optional[dict]:
+    detector = _load_model()
+    if detector is None:
+        return None
+    # Return a shallow copy to protect the cached value from accidental mutation
+    # by callers. Values are plain scalars/dicts in the public prediction.
+    pred = detector.predict(list(token_ids))
+    return dict(pred)
+
+
 def run_inference(token_ids: List[int]) -> Optional[dict]:
     """
     Run the detection model on a list of token IDs.
@@ -82,11 +94,12 @@ def run_inference(token_ids: List[int]) -> Optional[dict]:
             attackTypeAvailable
         — or —
         None if the model has not been trained / deployed yet.
+
+    The forward pass is deterministic, so predictions are cached by padded token
+    sequence. This improves repeated regression-suite and API performance without
+    changing any model output.
     """
-    detector = _load_model()
-    if detector is None:
-        return None
-    return detector.predict(token_ids)
+    return _run_inference_cached(tuple(int(x) for x in token_ids))
 
 
 def model_is_loaded() -> bool:

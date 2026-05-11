@@ -1,0 +1,110 @@
+{
+  "exporterVersion": "model2_attack_all_v6_targeted_v8_second_order_augmented",
+  "n_samples": 12480,
+  "fix_counts": {
+    "A": 3120,
+    "B": 3120,
+    "C": 3120,
+    "D": 3120
+  },
+  "language_counts": {
+    "python": 3120,
+    "javascript": 3120,
+    "java": 3120,
+    "php": 3120
+  },
+  "attack_type_counts": {
+    "NONE": 0,
+    "IN_BAND": 8503,
+    "BLIND": 857,
+    "SECOND_ORDER": 3120
+  },
+  "evidence_features": [
+    "SQL_STRING",
+    "SQL_CONCAT",
+    "FSTRING_SQL",
+    "FSTRING_SQL_RAW",
+    "UNSAFE_EXEC",
+    "SAFE_EXEC",
+    "WHITELIST_VAR",
+    "SAFE_PLACEHOLDER_LIST",
+    "SECOND_ORDER_FLOW",
+    "BOOLEAN_SINK",
+    "ORDER_BY_DYNAMIC",
+    "TABLE_NAME_DYNAMIC",
+    "RAW_VALUE_CONCAT",
+    "HAS_EXECUTION_SINK",
+    "VALUE_PARAMETER_CONTEXT",
+    "IDENTIFIER_CONTEXT",
+    "COMPLEX_BUILDER_CONTEXT",
+    "STORED_SQL_CONTEXT",
+    "FRAMEWORK_RAW_CONTEXT",
+    "QUERY_HELPER_CONTEXT",
+    "PHP_VALUE_CONTEXT",
+    "TIME_BLIND_CONTEXT",
+    "RAW_ALIAS_CONTEXT",
+    "SECOND_ORDER_CONFIG_ORDER_CONTEXT",
+    "SIMPLE_VALUE_QUERY_CONTEXT",
+    "PHP_SCALAR_CONCAT_CONTEXT",
+    "VALUE_LIST_CONTEXT",
+    "LIMIT_OFFSET_CONTEXT",
+    "SIMPLE_FRAMEWORK_VALUE_CONTEXT",
+    "COMPLEX_LOOP_BUILDER_CONTEXT",
+    "SQL_FRAGMENT_COMPOSER_CONTEXT",
+    "DIRECT_STORED_EXEC_CONTEXT",
+    "PYTHON_SIMPLE_VALUE_CONCAT_CONTEXT",
+    "PYTHON_SANITIZED_LIKE_CONTEXT",
+    "PYTHON_EXEC_ALIAS_CONTEXT",
+    "JS_DIRECT_TEMPLATE_VALUE_CONTEXT",
+    "JS_REQUEST_SEGMENT_VALUE_CONTEXT",
+    "SEQUELIZE_RAW_TEMPLATE_CONTEXT",
+    "JPA_NATIVE_RAW_CONTEXT",
+    "DB_ROW_STORED_SQL_EXEC_CONTEXT"
+  ],
+  "evidence_feature_count": 40,
+  "output_files": [
+    "training_data.npz",
+    "vocabulary.json",
+    "dataset_profile.json"
+  ],
+  "notes": [
+    "Balanced by language and fix class.",
+    "Attack-all calibration v6 targets A-vs-C overprediction, PHP scalar value SQLi, list/limit/offset value contexts, and stronger D stored-fragment contexts.",
+    "Model 1 remains frozen/read-only; this export does not modify Model 1.",
+    "Targeted v7 augmentation appends balanced hard cases without deleting the export folder.",
+    "Model 1 remains frozen/read-only; this augmentation does not modify Model 1.",
+    "Targeted v7 augmentation appends balanced hard cases without deleting the export folder.",
+    "Model 1 remains frozen/read-only; this augmentation does not modify Model 1.",
+    "Targeted remaining-failures v9 augmentation appends balanced hard cases for final D/B classification misses.",
+    "Model 1 remains frozen/read-only; this augmentation does not modify Model 1."
+  ],
+  "augmentationVersion": "model2_targeted_remaining_failures_v9",
+  "added_samples": 960,
+  "samples_per_class_language_extra": 60,
+  "targeted_failure_families": [
+    "Second-order saved widget/config/cache/query fragments should classify as D",
+    "Obfuscated execute aliases with direct value SQLi should classify as A",
+    "B/C anchor cases preserve identifier whitelist and complex-builder boundaries"
+  ],
+  "augmentationHistory": [
+    {
+      "version": "targeted_v8_second_order_only",
+      "old_n_samples": 10240,
+      "appended_samples": 1280,
+      "new_n_samples": 11520,
+      "goal": "Fix final remaining D->A second-order classifications while preserving A/B/C anchors.",
+      "target_failures": [
+        "python/004_SECOND_ORDER_saved_widget_filter.py",
+        "javascript/018_SECOND_ORDER_stored_query_executor.js",
+        "python/018_SECOND_ORDER_config_fragment.py",
+        "javascript/040_SECOND_ORDER_saved_filter_builder.js",
+        "python/008_IN_BAND_obfuscated_alias_execute.py"
+      ]
+    }
+  ],
+  "targeted_failure_families_v9": [
+    "D: saved widget where_fragment / stored query_sql / config archival_predicate executed later",
+    "B: dynamic ORDER BY/table identifier where allowlist is computed but raw variable is still used",
+    "A/C anchors preserve direct-value and complex-builder boundaries"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "fixLabels": {
+    "0": "A",
+    "1": "B",
+    "2": "C",
+    "3": "D"
+  },
+  "fixNames": {
+    "A": "Parameterized Query",
+    "B": "Whitelist Validation",
+    "C": "ORM / Query Builder Migration",
+    "D": "Second-Order Mitigation"
+  },
+  "languages": [
+    "python",
+    "javascript",
+    "java",
+    "php"
+  ],
+  "attackTypes": [
+    "NONE",
+    "IN_BAND",
+    "BLIND",
+    "SECOND_ORDER"
+  ]
+}

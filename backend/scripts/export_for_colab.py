@@ -1,987 +1,1909 @@
+r"""
+Export Model-1 V18 focused generalization training data for Google Colab.
+This file replaces backend/scripts/export_for_colab.py with the SAME name.
+
+Why V18 exists
+-------------
+V9 made the model much more ML-first and balanced, but the adversarial real-world suite exposed two important generalization gaps:
+  1. time-based SQLi was detected as vulnerable but typed as IN_BAND instead of BLIND;
+  2. PHP callable-array aliases to PDO/mysqli query were missed as SQL execution sinks.
+
+V18 is a focused follow-up to V16. It keeps V18 stable and adds only two narrow generalization families: SAFE Sequelize replacements/bindings and JavaScript saved/cache/config segment SECOND_ORDER flow: keep V9's SAFE-flow knowledge while adding generated variants that teach the model time-delay BLIND behavior and callable DB alias sinks without copying benchmark files:
+  SAFE flow examples:
+    user input -> allowlist/map/numeric cast/bindings -> SQL syntax/params -> safe execute
+  VULNERABLE flow examples:
+    user input -> raw variable/raw identifier/raw string concat -> SQL sink
+  SECOND_ORDER flow examples:
+    DB-loaded/config/stored fragment -> SQL syntax -> sink
+
+Anti-leakage rule
+-----------------
+Audit CSVs are used only to increase the number of generated pattern families.
+This exporter does NOT copy source code from benchmark ZIP suites.
+It creates new generated variants with different names, structures and layouts.
+
+Recommended Windows CMD command from backend/:
+    set PYTHONPATH=.
+    python scripts\export_for_colab.py ^
+      --out colab_export ^
+      --sequence-length 256 ^
+      --generated-per-class 4 ^
+      --hardcase-per-family 16 ^
+      --safe-calibration-per-family 8 ^
+      --generated-seeds 20260810 20260811 20260812 ^
+      --audit-csv outputs\model_audit_targeted_after_v9_final.csv ^
+      --audit-csv outputs\model_audit_mega_after_v9_final.csv ^
+      --audit-csv outputs\model_audit_realistic_after_v9_final.csv ^
+      --audit-csv outputs\model_audit_enterprise_after_v9_final.csv ^
+      --audit-csv outputs\model_audit_hard_after_v9_final.csv ^
+      --audit-csv outputs\model_audit_framework_after_v9_final2.csv ^
+      --audit-csv outputs\model_audit_adversarial_after_v11_final.csv
+
+Upload to Colab:
+    colab_export/vocabulary.json
+    colab_export/training_data.npz
 """
-Export preprocessing artifacts for Google Colab training.
+from __future__ import annotations
 
-Generates the synthetic dataset and vocabulary for the CNN+BiLSTM model.
-
-KEY DIFFERENCE from earlier versions
-------------------------------------
-The previous augmentation prefixed every base sample with a comment
-(e.g. "# handle user request\n<code>"). Because clean_code() strips all
-comments before tokenization, every prefix variant collapsed to the SAME
-normalized sequence — so 1 200 "samples" were really only ~105 unique
-sequences seen many times. The model could not learn from that.
-
-This version uses LANGUAGE-AWARE STRUCTURAL TRANSFORMS that survive
-preprocessing because they add real keyword/punctuation tokens:
-
-    identity           — the base snippet as-is
-    wrap_function      — wrap in def handle(request): / function(req,res){}
-    try_except         — wrap in try/except (or try/catch)
-    validate_pre       — add an `if not x: return None` check
-    extra_var          — introduce an intermediate variable
-    extra_query_after  — append a second harmless query
-    log_post           — append a logger call
-    return_result      — add `result = ...; return result`
-
-After augmentation we VERIFY that n_unique == n_samples; if not, we drop
-the duplicates so the dataset reflects honest counts.
-
-Run from the backend/ directory:
-    python scripts/export_for_colab.py
-
-Outputs (inside backend/colab_export/):
-    vocabulary.json       – fixed token→id mapping
-    training_data.npz     – X (int32, shape N × MODEL_SEQ_LEN) + y (float32 labels)
-    export_info.json      – dataset statistics and architecture spec
-
-After training in Colab, place sqli_model.npz in:
-    backend/app/model/weights/sqli_model.npz
-"""
-
-import os
-import sys
+import argparse
+import csv
 import json
+import random
+import string
+import sys
+from collections import Counter
+from pathlib import Path
+from typing import Dict, Iterable, List, Tuple
+
 import numpy as np
 
-BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, BACKEND_DIR)
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 from app.vectorization.vocabulary import build_fixed_vocabulary, save_vocabulary
-from app.preprocessing.code_cleaner import clean_code
-from app.preprocessing.tokenizer import tokenize_code
-from app.preprocessing.normalizer import normalize_tokens
-from scripts.dataset_mutations import generate_mutated_vuln, generate_mutated_safe
+from scripts.export_for_colab_base import (
+    ATTACK_TO_ID,
+    ID_TO_ATTACK,
+    EXT_TO_LANG,
+    DatasetBuilder as _BaseDatasetBuilder,
+    add_original_export_samples,
+    generated_training_samples,
+    add_noise_to_code,
+    normalize_to_ids,
+    profile_dataset as _profile_dataset_base,
+)
 
-OUTPUT_DIR = os.path.join(BACKEND_DIR, "colab_export")
+LANG_EXT = {"python": "py", "javascript": "js", "java": "java", "php": "php"}
 
-# Reduced from 256 → 128. The dataset's median non-pad length is 23 tokens,
-# max ~80 even after augmentation. 256 was wildly oversized — 80%+ pad
-# tokens dilute the BiLSTM signal and make every training step ~2x slower.
-# The chunker splits long files at function boundaries in production, so
-# 128 is more than enough for any single chunk.
-MODEL_SEQ_LEN = 128
+
+def ident(r: random.Random, prefix: str = "v") -> str:
+    return prefix + "_" + "".join(r.choice(string.ascii_lowercase) for _ in range(8))
+
+
+class WeightedDatasetBuilder(_BaseDatasetBuilder):
+    """Base DatasetBuilder + per-sample loss weights for V9 training."""
+
+    def __init__(self, vocab: dict, sequence_length: int):
+        super().__init__(vocab, sequence_length)
+        self.sample_weight_binary: List[float] = []
+        self.sample_weight_type: List[float] = []
+        self.sample_family: List[str] = []
+
+    def add(
+        self,
+        code: str,
+        label: str,
+        attack_type: str,
+        language: str,
+        path: str,
+        source_id: str,
+        suite_name: str,
+        binary_weight: float = 1.0,
+        type_weight: float = 1.0,
+        family: str = "base",
+    ) -> bool:
+        before = len(self.X)
+        ok = super().add(code, label, attack_type, language, path, source_id, suite_name)
+        if ok and len(self.X) == before + 1:
+            self.sample_weight_binary.append(float(binary_weight))
+            self.sample_weight_type.append(float(type_weight))
+            self.sample_family.append(str(family))
+        return ok
+
+    def arrays(self):
+        arrays = super().arrays()
+        n = len(arrays["y"])
+        while len(self.sample_weight_binary) < n:
+            self.sample_weight_binary.append(1.0)
+            self.sample_weight_type.append(1.0)
+            self.sample_family.append("base")
+        arrays["sample_weight_binary"] = np.array(self.sample_weight_binary[:n], dtype=np.float32)
+        arrays["sample_weight_type"] = np.array(self.sample_weight_type[:n], dtype=np.float32)
+        arrays["sample_family"] = np.array(self.sample_family[:n])
+        return arrays
+
+
+def _family_from_file(path: str) -> str:
+    p = path.lower()
+    if "sequelize" in p and "replacement" in p:
+        return "safe:sequelize_replacements"
+    if "jdbctemplate" in p:
+        return "safe:jdbctemplate_params"
+    if "jpa" in p or "native_query" in p:
+        return "safe:jpa_setparameter"
+    if "laravel" in p or "db_select_bindings" in p:
+        return "safe:laravel_bindings"
+    if "prepared" in p or "pdo_prepare" in p or "prepare_execute" in p:
+        return "safe:prepared_params"
+    if "placeholder" in p:
+        return "safe:placeholder_list"
+    if "whitelist" in p or "allowlist" in p or "set_contains" in p or "array_map" in p or "dict_map" in p:
+        return "safe:allowlist_identifier"
+    if "numeric" in p or "limit_offset" in p or "limit" in p:
+        return "safe:numeric_bounds"
+    if "query_builder" in p or "querybuilder" in p or "params" in p:
+        return "safe:query_builder"
+    if "time_based" in p or "sleep" in p or "delay" in p or "benchmark" in p:
+        return "vuln:blind_time_delay"
+    if "query_alias" in p or "callable" in p:
+        return "vuln:php_callable_db_alias"
+    if "raw_order" in p:
+        return "vuln:raw_order"
+    if "blind" in p or "count" in p or "permission" in p or "token" in p:
+        return "vuln:blind"
+    if "second" in p or "stored" in p or "cached" in p or "config" in p or "fragment" in p:
+        return "vuln:second_order"
+    return "generic"
+
+
+def audit_focus_from_csv(paths: List[str]) -> Dict[str, int]:
+    """Return generation focus counts from ML mismatch rows, never source text."""
+    counts: Counter[str] = Counter()
+    for raw in paths:
+        p = Path(raw)
+        if not p.exists():
+            p = BACKEND_DIR / raw
+        if not p.exists():
+            print(f"[audit] missing CSV, skipped: {raw}")
+            continue
+        with p.open("r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                file_name = row.get("file") or row.get("path") or ""
+                exp_v = (row.get("expected_verdict") or row.get("expected_label") or row.get("Expected") or "SAFE").strip().upper()
+                exp_t = (row.get("expected_attack_type") or row.get("expected_type") or row.get("Expected Type") or "NONE").strip().upper()
+                # Audit CSVs contain ml_predicted_*; API/direct test-result CSVs contain actual_* only.
+                # For V18 focusing, actual_* is enough to learn which adversarial family failed,
+                # while still never copying benchmark source code.
+                ml_v = (row.get("ml_predicted_verdict") or row.get("actual_verdict") or row.get("Actual") or "").strip().upper()
+                ml_t = (row.get("ml_predicted_attack_type") or row.get("actual_type") or row.get("Actual Type") or "").strip().upper()
+                lang = file_name.split("/")[0].strip().lower() or "unknown"
+                fam = _family_from_file(file_name)
+
+                # The V18 target: balance SAFE specificity with vulnerable recall and attack-type accuracy.
+                if exp_v == "SAFE" and ml_v != "SAFE":
+                    # V18 treats both VULNERABLE and SUSPICIOUS predictions on SAFE samples as hard-SAFE focus rows.
+                    # This captures named-JDBC/JPA and comments-only false positives without copying benchmark code.
+                    counts["NONE"] += 1
+                    counts[f"{lang}:NONE"] += 1
+                    counts[fam] += 2
+                elif exp_v == "VULNERABLE" and (ml_v != "VULNERABLE" or ml_t != exp_t):
+                    # V18 gives stronger focus to vulnerable misses and type errors.
+                    counts[exp_t] += 3
+                    counts[f"{lang}:{exp_t}"] += 3
+                    counts[f"type:{exp_t}"] += 2
+                    counts[fam] += 3
+                    if ml_v != "VULNERABLE":
+                        counts["hard_vuln_recall"] += 3
+                        counts[f"{lang}:hard_vuln_recall"] += 3
+
+    # Convert raw counts to a bounded extra budget.
+    return {k: min(24, max(1, int((v + 1) // 2))) for k, v in counts.items()}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Base samples — each is a (language, sub_category, code) triple
-# ─────────────────────────────────────────────────────────────────────────────
-# language    : "python" | "javascript" | "php" | "java"
-# sub_category: just for documentation/coverage; not used at training time
-# code        : raw source snippet (no leading/trailing newlines)
+# V18 focused calibration families
 # ─────────────────────────────────────────────────────────────────────────────
 
-VULNERABLE_BASE: list[tuple[str, str, str]] = [
-    # ── Python: f-string injection ────────────────────────────────────────────
-    ("python", "fstring", 'uid = request.args.get("id")\nquery = f"SELECT * FROM users WHERE id={uid}"\nconn.execute(query)'),
-    ("python", "fstring", 'name = request.form["name"]\nsql = f"SELECT * FROM employees WHERE name=\'{name}\'"\ncursor.execute(sql)'),
-    ("python", "fstring", 'search = request.GET["q"]\nresult = db.execute(f"SELECT * FROM products WHERE name LIKE \'%{search}%\'")'),
-    ("python", "fstring", 'role = params["role"]\nq = f"SELECT * FROM permissions WHERE role=\'{role}\'"\ndb.query(q)'),
-    ("python", "fstring", 'dept = request.args["department"]\nresult = conn.execute(f"SELECT * FROM staff WHERE dept=\'{dept}\'")'),
-    ("python", "fstring", 'pid = request.GET.get("pid")\nquery = f"SELECT * FROM posts WHERE id={pid}"\ndb.execute(query)'),
-    ("python", "fstring", 'tag = request.args.get("tag")\ncursor.execute(f"SELECT * FROM articles WHERE tag=\'{tag}\'")'),
-    ("python", "fstring", 'email = request.form.get("email")\ndb.execute(f"SELECT id FROM users WHERE email=\'{email}\'")'),
-    ("python", "fstring", 'token = request.headers.get("token")\ncursor.execute(f"SELECT * FROM sessions WHERE token=\'{token}\'")'),
-    ("python", "fstring", 'year = request.GET["year"]\nconn.execute(f"SELECT * FROM events WHERE year={year}")'),
-    ("python", "fstring", 'cat = request.args["category"]\ndb.execute(f"SELECT * FROM items WHERE category=\'{cat}\'")'),
-    ("python", "fstring", 'status = request.form["status"]\ncursor.execute(f"UPDATE orders SET status=\'{status}\' WHERE id={oid}")'),
-    ("python", "fstring", 'region = request.args.get("region")\nresult = db.execute(f"SELECT * FROM sales WHERE region=\'{region}\'")'),
-    ("python", "fstring", 'user = request.form.get("username")\npwd = request.form.get("password")\ndb.execute(f"SELECT * FROM users WHERE username=\'{user}\' AND password=\'{pwd}\'")'),
-    ("python", "fstring", 'ip = request.headers.get("X-Forwarded-For","0.0.0.0")\ncursor.execute(f"INSERT INTO logs (ip) VALUES (\'{ip}\')")'),
-    ("python", "fstring_dyncol",   'sortcol = request.GET["sort"]\ncursor.execute(f"SELECT * FROM products ORDER BY {sortcol}")'),
-    ("python", "fstring_dyntable", 'table = request.GET["table"]\ndb.execute(f"SELECT * FROM {table}")'),
-    ("python", "fstring", 'sid = request.GET.get("session")\ncursor.execute(f"DELETE FROM sessions WHERE id=\'{sid}\'")'),
+def py_safe_allowlist(r):
+    helper = ident(r, "pick")
+    return f'''
+def {helper}(value, allowed, default):
+    return value if value in allowed else default
 
-    # ── Python: direct string concatenation ───────────────────────────────────
-    ("python", "concat", 'user_id = request.GET["uid"]\nquery = "SELECT * FROM users WHERE id = " + user_id\ndb.execute(query)'),
-    ("python", "concat", 'name = form["username"]\nsql = "SELECT * FROM accounts WHERE username=\'" + name + "\'"\ncursor.execute(sql)'),
-    ("python", "concat", 'email = params.get("email")\nq = "SELECT id FROM users WHERE email=\'" + email + "\'"\nconn.execute(q)'),
-    ("python", "concat", 'order_id = request.args.get("order")\nquery = "SELECT * FROM orders WHERE id=" + order_id\nresult = db.query(query)'),
-    ("python", "concat", 'product = request.form["product"]\nsql = "SELECT * FROM products WHERE name=\'" + product + "\'"\ncursor.execute(sql)'),
-    ("python", "concat", 'uid = request.GET.get("uid", "")\nquery = "SELECT name FROM users WHERE id=" + uid\nconn.execute(query)'),
-    ("python", "concat", 'uname = input_data["user"]\nsql = "DELETE FROM sessions WHERE username=\'" + uname + "\'"\ndb.execute(sql)'),
-    ("python", "concat", 'cat = request.args["category"]\nquery = "SELECT * FROM items WHERE category=\'" + cat + "\'"\ncur.execute(query)'),
-    ("python", "concat", 'pass_val = request.form.get("password")\nsql = "SELECT id FROM users WHERE password=\'" + pass_val + "\'"\ncursor.execute(sql)'),
-    ("python", "concat_dyntable", 'table_name = request.GET["table"]\nquery = "SELECT * FROM " + table_name\ndb.execute(query)'),
-    ("python", "concat_dyncol",   'col = request.args["sort"]\nquery = "SELECT * FROM products ORDER BY " + col\ncursor.execute(query)'),
-    ("python", "concat", 'search = request.form.get("q", "")\nsql = "SELECT * FROM articles WHERE title LIKE \'%" + search + "%\'"\ndb.execute(sql)'),
-    ("python", "concat", 'year = request.GET["year"]\nresult = db.execute("SELECT * FROM events WHERE year=" + year)'),
-    ("python", "concat", 'region = request.args["region"]\ncursor.execute("SELECT * FROM sales WHERE region=\'" + region + "\'")'),
-    ("python", "concat", 'dept = request.form["department"]\ndb.execute("SELECT * FROM employees WHERE dept=\'" + dept + "\'")'),
-    ("python", "concat", 'tag = request.GET.get("tag", "")\ncursor.execute("SELECT * FROM posts WHERE tag=\'" + tag + "\'")'),
-    ("python", "concat", 'status = request.args.get("status")\ndb.execute("SELECT * FROM orders WHERE status=\'" + status + "\'")'),
-    ("python", "concat", 'ip = request.headers.get("X-Forwarded-For")\ncursor.execute("INSERT INTO logs (ip) VALUES (\'" + ip + "\')")'),
-
-    # ── Python: % format & .format() injection ────────────────────────────────
-    ("python", "format_pct", 'user = request.POST.get("user")\nsql = "SELECT * FROM logins WHERE user=\'%s\'" % user\ndb.execute(sql)'),
-    ("python", "format_pct", 'uid = request.GET["id"]\nquery = "SELECT * FROM accounts WHERE id=%s" % uid\ncursor.execute(query)'),
-    ("python", "format_dot", 'val = request.form["value"]\nsql = "SELECT * FROM data WHERE value=\'{}\'".format(val)\ndb.execute(sql)'),
-    ("python", "format_dot", 'token = request.GET["token"]\nquery = "SELECT user_id FROM tokens WHERE token=\'{}\'".format(token)\nconn.execute(query)'),
-    ("python", "format_dot", 'tid = request.args.get("tid")\ncursor.execute("DELETE FROM tasks WHERE id={}".format(tid))'),
-
-    # ── Python: blind / time-based ────────────────────────────────────────────
-    # Proposal (page 4-5) names BLIND as a primary motivation for using deep
-    # learning over Regex. Two sub-types: BOOLEAN (response varies based on
-    # condition truth) and TIME (response delay reveals condition truth).
-
-    # Python BLIND BOOLEAN — Flask args, suffix injection
-    ("python", "blind_boolean", 'uid = request.GET["id"]\npayload = request.GET.get("p", "")\nq = "SELECT id FROM users WHERE id=" + uid + " AND " + payload\ndb.execute(q)'),
-    ("python", "blind_boolean", 'aid = request.args.get("aid","1")\ncond = request.args.get("c","1=1")\ndb.execute(f"SELECT * FROM accounts WHERE id={aid} AND {cond}")'),
-    ("python", "blind_boolean", 'pid = request.GET["pid"]\nguess = request.GET.get("g")\nq = f"SELECT 1 FROM products WHERE id={pid} AND SUBSTRING(name,1,1)=\'{guess}\'"\ncur.execute(q)'),
-    ("python", "blind_boolean", 'tid = request.form["tid"]\nch = request.form["ch"]\ncursor.execute("SELECT 1 FROM tokens WHERE id=" + tid + " AND ASCII(SUBSTR(token,1,1))=" + ch)'),
-    ("python", "blind_boolean", 'oid = request.GET["oid"]\nbit = request.GET["bit"]\ndb.execute(f"SELECT * FROM orders WHERE id={oid} AND (SELECT COUNT(*) FROM users) > {bit}")'),
-    ("python", "blind_boolean", 'uid = request.GET.get("uid")\nletter = request.GET.get("letter","a")\ndb.execute("SELECT id FROM users WHERE id=" + uid + " AND password LIKE \'" + letter + "%\'")'),
-    ("python", "blind_boolean", 'rid = request.args["rid"]\ncondition = request.args.get("cond","1=1")\nq = f"SELECT 1 FROM reports WHERE id={rid} AND ({condition})"\ncur.execute(q)'),
-    ("python", "blind_boolean", 'eid = request.GET["eid"]\nidx = request.GET["idx"]\nch = request.GET["ch"]\ncur.execute(f"SELECT 1 FROM employees WHERE id={eid} AND SUBSTRING(ssn,{idx},1)=\'{ch}\'")'),
-
-    # Python BLIND TIME-based — SLEEP / pg_sleep / WAITFOR
-    ("python", "blind_time",    'uid = request.GET.get("id")\ncond = request.GET.get("cond","")\nsql = f"SELECT id FROM users WHERE id={uid} AND IF({cond}, SLEEP(5), 0)"\ncursor.execute(sql)'),
-    ("python", "blind_time",    'pid = request.args["pid"]\nguess = request.args.get("g","a")\ndb.execute(f"SELECT * FROM products WHERE id={pid} AND IF(SUBSTRING(name,1,1)=\'{guess}\', SLEEP(3), 0)")'),
-    ("python", "blind_time",    'aid = request.GET["aid"]\nsec = request.GET.get("s","2")\ndb.execute("SELECT 1 FROM accounts WHERE id=" + aid + " AND SLEEP(" + sec + ")")'),
-    ("python", "blind_time_pg", 'uid = request.GET["uid"]\nlen_g = request.GET.get("n","8")\ncur.execute(f"SELECT 1 FROM users WHERE id={uid} AND LENGTH(password)={len_g} AND pg_sleep(2) IS NULL")'),
-    ("python", "blind_time_mssql", 'tid = request.form["tid"]\ncond = request.form.get("c","1=1")\ndb.execute(f"SELECT 1 FROM tokens WHERE id={tid}; IF ({cond}) WAITFOR DELAY \'0:0:5\'")'),
-    ("python", "blind_time",    'rid = request.args["rid"]\nidx = request.args["i"]\nch = request.args["c"]\ndb.execute(f"SELECT 1 FROM reports WHERE id={rid} AND IF(SUBSTR(title,{idx},1)=\'{ch}\', BENCHMARK(5000000, MD5(1)), 0)")'),
-    ("python", "blind_time",    'sid = request.GET["sid"]\nbit = request.GET.get("bit","1")\nq = "SELECT 1 FROM sessions WHERE id=" + sid + " AND IF(" + bit + ", SLEEP(4), 0)"\ncursor.execute(q)'),
-
-    # Python BLIND — wrapped in higher-level helpers (proposal: data flow over time)
-    ("python", "blind_boolean", 'def check_priv(req):\n    uid = req.GET["uid"]\n    suffix = req.GET.get("s","")\n    cur.execute(f"SELECT 1 FROM admins WHERE user_id={uid} AND {suffix}")'),
-    ("python", "blind_time",    'def slow_probe(req):\n    pid = req.GET["pid"]\n    cond = req.GET.get("cond","1=1")\n    db.execute(f"SELECT 1 FROM payments WHERE id={pid} AND IF({cond}, SLEEP(2), 0)")'),
-
-    # JavaScript BLIND
-    ("javascript", "blind_boolean", 'const uid = req.query.uid;\nconst payload = req.query.p || "1=1";\ndb.query(`SELECT 1 FROM users WHERE id=${uid} AND ${payload}`);'),
-    ("javascript", "blind_boolean", 'const oid = req.query.oid;\nconst guess = req.body.g;\ndb.query("SELECT 1 FROM orders WHERE id=" + oid + " AND SUBSTRING(token,1,1)=\'" + guess + "\'");'),
-    ("javascript", "blind_time",    'const aid = req.params.aid;\nconst cond = req.query.cond || "1=1";\ndb.query(`SELECT 1 FROM accounts WHERE id=${aid} AND IF(${cond}, SLEEP(3), 0)`);'),
-    ("javascript", "blind_time",    'const tid = req.body.tid;\nconst sec = req.body.s || "2";\ndb.query("SELECT 1 FROM tokens WHERE id=" + tid + " AND SLEEP(" + sec + ")");'),
-
-    # PHP BLIND
-    ("php", "blind_boolean", '$uid = $_GET["id"];\n$cond = $_GET["c"] ?? "1=1";\n$q = "SELECT 1 FROM users WHERE id=" . $uid . " AND " . $cond;\nmysqli_query($conn, $q);'),
-    ("php", "blind_boolean", '$pid = $_GET["pid"];\n$g = $_GET["g"] ?? "a";\nmysql_query("SELECT 1 FROM products WHERE id=" . $pid . " AND SUBSTRING(name,1,1)=\'" . $g . "\'");'),
-    ("php", "blind_time",    '$uid = $_GET["uid"];\n$cond = $_GET["cond"] ?? "1=1";\n$query = "SELECT 1 FROM users WHERE id=" . $uid . " AND IF(" . $cond . ", SLEEP(5), 0)";\n$conn->query($query);'),
-    ("php", "blind_time",    '$rid = $_POST["rid"];\n$sec = $_POST["s"] ?? "3";\nmysqli_query($conn, "SELECT 1 FROM reports WHERE id=" . $rid . " AND SLEEP(" . $sec . ")");'),
-
-    # Java BLIND
-    ("java", "blind_boolean", 'String uid = request.getParameter("uid");\nString cond = request.getParameter("c");\nString sql = "SELECT 1 FROM users WHERE id=" + uid + " AND " + cond;\nstmt.executeQuery(sql);'),
-    ("java", "blind_boolean", 'String pid = request.getParameter("pid");\nString guess = request.getParameter("g");\nString sql = "SELECT 1 FROM products WHERE id=" + pid + " AND SUBSTRING(name,1,1)=\'" + guess + "\'";\nstmt.executeQuery(sql);'),
-    ("java", "blind_time",    'String aid = request.getParameter("aid");\nString cond = request.getParameter("cond");\nString sql = "SELECT 1 FROM accounts WHERE id=" + aid + " AND IF(" + cond + ", SLEEP(5), 0)";\nstmt.executeQuery(sql);'),
-    ("java", "blind_time",    'String tid = request.getParameter("tid");\nString sec = request.getParameter("s");\nString sql = "SELECT 1 FROM tokens WHERE id=" + tid + " AND SLEEP(" + sec + ")";\nstmt.executeQuery(sql);'),
-
-    # ── Python: union-based (added to widen coverage) ─────────────────────────
-    ("python", "union", 'uid = request.GET["id"]\nq = "SELECT name FROM users WHERE id=" + uid + " UNION SELECT password FROM secrets"\ndb.execute(q)'),
-    ("python", "union", 'col = request.args.get("c")\nq = f"SELECT {col} FROM users UNION SELECT password FROM admin"\ncursor.execute(q)'),
-
-    # ── Python: second-order (vulnerable storage of user input) ───────────────
-    # Proposal page 5 names SECOND_ORDER as the hardest class — input is stored
-    # safely-looking, then a *later* function reads it back into a SQL string.
-    # Examples below cover BOTH halves of the chain (storage and read-back),
-    # because real second-order detection requires understanding the full flow.
-
-    # Python — INSERT/UPDATE side (storage of user input that will be unsafe later)
-    ("python", "second_order", 'username = request.form["username"]\ndb.execute("INSERT INTO users (username) VALUES (\'" + username + "\')")'),
-    ("python", "second_order", 'bio = request.form.get("bio", "")\nuid = get_current_user_id()\ndb.execute("UPDATE profiles SET bio=\'" + bio + "\' WHERE user_id=" + str(uid))'),
-    ("python", "second_order", 'comment = request.form["comment"]\ndb.execute(f"INSERT INTO comments (text) VALUES (\'{comment}\')")'),
-    ("python", "second_order", 'nickname = request.form["nick"]\ncursor.execute(f"INSERT INTO members (nickname) VALUES (\'{nickname}\')")'),
-    ("python", "second_order", 'tag = request.json["tag"]\ndb.execute("INSERT INTO post_tags (tag) VALUES (\'" + tag + "\')")'),
-    ("python", "second_order", 'desc = request.form.get("description","")\ncursor.execute(f"UPDATE products SET description=\'{desc}\' WHERE id=1")'),
-    ("python", "second_order", 'note = request.json["note"]\ndb.execute(f"INSERT INTO audit (note) VALUES (\'{note}\')")'),
-    ("python", "second_order", 'role = request.form["role"]\ncursor.execute("UPDATE users SET role=\'" + role + "\' WHERE id=current_user_id()")'),
-
-    # Python — READ-BACK side (reads stored value into a new SQL string)
-    ("python", "second_order_read", 'def render_profile(uid):\n    cur.execute("SELECT username FROM users WHERE id=?", (uid,))\n    name = cur.fetchone()[0]\n    cur.execute(f"SELECT * FROM activity WHERE actor=\'{name}\'")'),
-    ("python", "second_order_read", 'def show_tag_posts(tag_id):\n    cur.execute("SELECT tag FROM post_tags WHERE id=?", (tag_id,))\n    tag = cur.fetchone()[0]\n    db.execute("SELECT * FROM posts WHERE tags LIKE \'%" + tag + "%\'")'),
-    ("python", "second_order_read", 'def lookup_owner(pid):\n    row = cur.execute("SELECT owner FROM products WHERE id=?", (pid,)).fetchone()\n    cur.execute(f"SELECT * FROM employees WHERE name=\'{row[0]}\'")'),
-    ("python", "second_order_read", 'def reload_pref(uid):\n    cur.execute("SELECT pref_key FROM prefs WHERE uid=?", (uid,))\n    k = cur.fetchone()[0]\n    db.execute("SELECT value FROM defaults WHERE key=\'" + k + "\'")'),
-    ("python", "second_order_read", 'def get_role_perms(uid):\n    cur.execute("SELECT role FROM users WHERE id=?", (uid,))\n    r = cur.fetchone()[0]\n    cur.execute(f"SELECT * FROM permissions WHERE role=\'{r}\'")'),
-    ("python", "second_order_read", 'def echo_audit(eid):\n    cur.execute("SELECT note FROM audit WHERE id=?", (eid,))\n    note = cur.fetchone()[0]\n    db.execute(f"INSERT INTO audit_copy (note) VALUES (\'{note}\')")'),
-
-    # JavaScript SECOND_ORDER
-    ("javascript", "second_order",      'const username = req.body.username;\ndb.query("INSERT INTO users (username) VALUES (\'" + username + "\')");'),
-    ("javascript", "second_order",      'const bio = req.body.bio;\nconst uid = req.session.userId;\ndb.query(`UPDATE profiles SET bio=\'${bio}\' WHERE user_id=${uid}`);'),
-    ("javascript", "second_order_read", 'async function showProfile(uid) {\n    const r = await db.query("SELECT username FROM users WHERE id=?", [uid]);\n    const name = r[0].username;\n    return db.query(`SELECT * FROM activity WHERE actor=\'${name}\'`);\n}'),
-    ("javascript", "second_order_read", 'async function fetchTagPosts(tagId) {\n    const r = await db.query("SELECT tag FROM tags WHERE id=?", [tagId]);\n    const tag = r[0].tag;\n    return db.query("SELECT * FROM posts WHERE tag=\'" + tag + "\'");\n}'),
-
-    # PHP SECOND_ORDER
-    ("php", "second_order",      '$user = $_POST["user"];\nmysqli_query($conn, "INSERT INTO users (username) VALUES (\'" . $user . "\')");'),
-    ("php", "second_order",      '$bio = $_POST["bio"] ?? "";\n$uid = $_SESSION["uid"];\n$conn->query("UPDATE profiles SET bio=\'" . $bio . "\' WHERE user_id=" . $uid);'),
-    ("php", "second_order_read", 'function show_profile($pdo, $uid) {\n    $stmt = $pdo->prepare("SELECT username FROM users WHERE id=?");\n    $stmt->execute([$uid]);\n    $name = $stmt->fetchColumn();\n    $pdo->query("SELECT * FROM activity WHERE actor=\'" . $name . "\'");\n}'),
-    ("php", "second_order_read", 'function load_role($mysqli, $uid) {\n    $stmt = $mysqli->prepare("SELECT role FROM users WHERE id=?");\n    $stmt->bind_param("i", $uid);\n    $stmt->execute();\n    $r = $stmt->get_result()->fetch_assoc();\n    mysqli_query($mysqli, "SELECT * FROM perms WHERE role=\'" . $r["role"] . "\'");\n}'),
-
-    # Java SECOND_ORDER
-    ("java", "second_order",      'String username = request.getParameter("username");\nString sql = "INSERT INTO users (username) VALUES (\'" + username + "\')";\nstmt.executeUpdate(sql);'),
-    ("java", "second_order",      'String bio = request.getParameter("bio");\nint uid = (Integer) session.getAttribute("uid");\nString sql = "UPDATE profiles SET bio=\'" + bio + "\' WHERE user_id=" + uid;\nstmt.executeUpdate(sql);'),
-    ("java", "second_order_read", 'public void showProfile(int uid) throws SQLException {\n    PreparedStatement ps = conn.prepareStatement("SELECT username FROM users WHERE id=?");\n    ps.setInt(1, uid);\n    ResultSet rs = ps.executeQuery();\n    rs.next();\n    String name = rs.getString(1);\n    stmt.executeQuery("SELECT * FROM activity WHERE actor=\'" + name + "\'");\n}'),
-    ("java", "second_order_read", 'public void getRolePerms(int uid) throws SQLException {\n    PreparedStatement ps = conn.prepareStatement("SELECT role FROM users WHERE id=?");\n    ps.setInt(1, uid);\n    ResultSet rs = ps.executeQuery();\n    rs.next();\n    String role = rs.getString(1);\n    stmt.executeQuery("SELECT * FROM perms WHERE role=\'" + role + "\'");\n}'),
-
-    # ── JavaScript: template literals + concat ────────────────────────────────
-    ("javascript", "concat",          'const uid = req.query.uid;\nconst query = "SELECT * FROM users WHERE id=" + uid;\nconn.query(query);'),
-    ("javascript", "template",        'const name = req.body.name;\nconst sql = `SELECT * FROM users WHERE name=\'${name}\'`;\ndb.query(sql);'),
-    ("javascript", "concat",          'const email = req.params.email;\npool.query("SELECT * FROM accounts WHERE email=\'" + email + "\'");'),
-    ("javascript", "concat",          'const id = req.query.id;\nconst q = "SELECT * FROM orders WHERE user_id=" + id;\nconnection.query(q, callback);'),
-    ("javascript", "concat",          'const search = req.body.search;\ndb.query("SELECT * FROM products WHERE name LIKE \'%" + search + "%\'");'),
-    ("javascript", "concat",          'const token = req.headers.authorization;\ndb.query("SELECT * FROM sessions WHERE token=\'" + token + "\'");'),
-    ("javascript", "concat",          'const cat = req.query.category;\nconst query = "SELECT * FROM items WHERE category=\'" + cat + "\'";\ndb.execute(query);'),
-    ("javascript", "concat",          'const pwd = req.body.password;\nconst q = "SELECT id FROM users WHERE password=\'" + pwd + "\'";\ndb.query(q);'),
-    ("javascript", "template",        'const role = req.query.role;\ndb.query(`SELECT * FROM permissions WHERE role=\'${role}\'`);'),
-    ("javascript", "concat",          'const username = req.body.username;\nconst password = req.body.password;\ndb.query("SELECT * FROM users WHERE username=\'" + username + "\' AND password=\'" + password + "\'");'),
-    ("javascript", "concat",          'const tag = req.body.tag;\npool.execute("SELECT * FROM posts WHERE tag=\'" + tag + "\'");'),
-    ("javascript", "concat",          'const status = req.query.status;\ndb.query("SELECT * FROM orders WHERE status=\'" + status + "\'");'),
-    ("javascript", "template_dyncol", 'const col = req.query.sort;\ndb.query(`SELECT * FROM users ORDER BY ${col}`);'),
-
-    # ── PHP: dot concat ───────────────────────────────────────────────────────
-    ("php", "concat",        '$uid = $_GET["id"];\n$query = "SELECT * FROM users WHERE id=" . $uid;\nmysql_query($query);'),
-    ("php", "concat",        '$name = $_POST["username"];\n$sql = "SELECT * FROM accounts WHERE name=\'" . $name . "\'";\nmysqli_query($conn, $sql);'),
-    ("php", "concat",        '$email = $_REQUEST["email"];\n$q = "SELECT id FROM users WHERE email=\'" . $email . "\'";\nmysql_query($q);'),
-    ("php", "concat",        '$pass = $_POST["password"];\n$query = "SELECT * FROM users WHERE password=\'" . $pass . "\'";\n$result = $conn->query($query);'),
-    ("php", "concat",        '$cat = $_GET["category"];\n$query = "SELECT * FROM products WHERE cat=\'" . $cat . "\'";\n$result = mysqli_query($con, $query);'),
-    ("php", "concat",        '$search = $_GET["q"];\n$sql = "SELECT * FROM articles WHERE title LIKE \'%" . $search . "%\'";\n$result = mysql_query($sql);'),
-    ("php", "concat_dyncol", '$sort = $_GET["sort"];\n$query = "SELECT * FROM users ORDER BY " . $sort;\n$result = $conn->query($query);'),
-    ("php", "sprintf",       '$id = $_GET["id"];\n$query = sprintf("SELECT * FROM users WHERE id=%s", $id);\nmysql_query($query);'),
-
-    # ── Java: + concat into executeQuery ──────────────────────────────────────
-    ("java", "concat",        'String userId = request.getParameter("id");\nString sql = "SELECT * FROM users WHERE id=" + userId;\nstatement.executeQuery(sql);'),
-    ("java", "concat",        'String name = request.getParameter("username");\nString query = "SELECT * FROM accounts WHERE name=\'" + name + "\'";\nrs = stmt.executeQuery(query);'),
-    ("java", "concat",        'String email = request.getParameter("email");\nString q = "SELECT id FROM users WHERE email=\'" + email + "\'";\nResultSet rs = stmt.executeQuery(q);'),
-    ("java", "concat",        'String search = request.getParameter("q");\nString sql = "SELECT * FROM products WHERE name LIKE \'%" + search + "%\'";\nstmt.executeQuery(sql);'),
-    ("java", "concat",        'String pass = request.getParameter("password");\nString sql = "SELECT * FROM users WHERE password=\'" + pass + "\'";\nResultSet rs = statement.executeQuery(sql);'),
-    ("java", "stringbuilder", 'String category = request.getParameter("category");\nStringBuilder sb = new StringBuilder("SELECT * FROM items WHERE ");\nsb.append("category=\'").append(category).append("\'");\nResultSet rs = stmt.executeQuery(sb.toString());'),
-    ("java", "concat_dyncol", 'String sortCol = request.getParameter("sort");\nString query = "SELECT * FROM users ORDER BY " + sortCol;\nResultSet rs = conn.createStatement().executeQuery(query);'),
-]
+def list_{ident(r, 'fn')}(request, conn):
+    allowed_cols = {{"name", "email", "created_at"}}
+    allowed_dir = {{"ASC", "DESC"}}
+    safe_col = {helper}(request.GET.get("sort", "created_at"), allowed_cols, "created_at")
+    safe_dir = {helper}(request.GET.get("dir", "ASC"), allowed_dir, "ASC")
+    sql = f"SELECT id,email FROM users WHERE tenant_id = ? ORDER BY {{safe_col}} {{safe_dir}}"
+    return conn.execute(sql, (request.user.tenant_id,)).fetchall()
+'''
 
 
-SAFE_BASE: list[tuple[str, str, str]] = [
-    # ── Python: parameterized — produces SAFE_EXEC signal ────────────────────
-    ("python", "param_qmark", 'user_id = request.GET["uid"]\ncursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))'),
-    ("python", "param_pct",   'name = form["username"]\ncursor.execute("SELECT * FROM accounts WHERE username = %s", (name,))'),
-    ("python", "param_pct",   'email = params.get("email")\ncursor.execute("SELECT id FROM users WHERE email = %s", [email])'),
-    ("python", "param_qmark", 'order_id = request.args.get("order")\ncursor.execute("SELECT * FROM orders WHERE id = ?", (order_id,))'),
-    ("python", "param_qmark", 'product = request.form["product"]\ncursor.execute("SELECT * FROM products WHERE name = ?", (product,))'),
-    ("python", "param_pct",   'uid = request.GET.get("uid", "")\ncursor.execute("SELECT name FROM users WHERE id = %s", (uid,))'),
-    ("python", "param_pct",   'pass_val = request.form.get("password")\ncursor.execute("SELECT id FROM users WHERE password_hash = %s", (hash_pw(pass_val),))'),
-    ("python", "param_pct",   'search = request.form.get("q", "")\ncursor.execute("SELECT * FROM articles WHERE title LIKE %s", (f"%{search}%",))'),
-    ("python", "param_qmark", 'year = request.GET["year"]\ncursor.execute("SELECT * FROM events WHERE year = ?", (year,))'),
-    ("python", "param_pct",   'region = request.args["region"]\ncursor.execute("SELECT * FROM sales WHERE region = %s", (region,))'),
-    ("python", "param_qmark", 'dept = request.form["department"]\ncursor.execute("SELECT * FROM employees WHERE dept = ?", (dept,))'),
-    ("python", "param_pct",   'cat = request.args["category"]\ncursor.execute("SELECT * FROM items WHERE category = %s", (cat,))'),
-    ("python", "param_qmark", 'tag = request.GET.get("tag")\ncursor.execute("SELECT * FROM posts WHERE tag = ?", (tag,))'),
-    ("python", "param_pct",   'status = request.args.get("status")\ncursor.execute("SELECT * FROM orders WHERE status = %s", (status,))'),
-    ("python", "param_qmark", 'email = request.form["email"]\ncursor.execute("SELECT id FROM users WHERE email = ?", (email,))'),
-    ("python", "param_pct",   'token = request.headers.get("token")\ncursor.execute("SELECT * FROM sessions WHERE token = %s", (token,))'),
-    ("python", "param_qmark", 'pid = request.GET.get("pid")\ncursor.execute("SELECT * FROM posts WHERE id = ?", (pid,))'),
-    ("python", "param_pct",   'role = request.args.get("role")\ncursor.execute("SELECT * FROM permissions WHERE role = %s", (role,))'),
-    ("python", "param_qmark", 'ip = request.remote_addr\ncursor.execute("INSERT INTO logs (ip) VALUES (?)", (ip,))'),
+def py_safe_dict_map_table(r):
+    return f'''
+def load_{ident(r, 'fn')}(request, conn):
+    tables = {{"users": "users_archive", "orders": "orders_archive"}}
+    table_name = tables.get(request.GET.get("entity"), "users_archive")
+    sql = "SELECT id, created_at FROM " + table_name + " WHERE tenant_id = ?"
+    return conn.execute(sql, (request.user.tenant_id,)).fetchall()
+'''
 
-    # ── Python: SQLAlchemy text() with bound params ──────────────────────────
-    ("python", "sqlalchemy", 'from sqlalchemy import text\nuid = request.args.get("id")\nstmt = text("SELECT * FROM users WHERE id = :uid")\nresult = conn.execute(stmt, {"uid": uid})'),
-    ("python", "sqlalchemy", 'from sqlalchemy import text\nname = form["username"]\nstmt = text("SELECT * FROM accounts WHERE username = :name")\nresult = conn.execute(stmt, {"name": name})'),
-    ("python", "sqlalchemy", 'from sqlalchemy import text\nemail = request.form["email"]\nstmt = text("SELECT id FROM users WHERE email = :email")\nresult = conn.execute(stmt, {"email": email})'),
-    ("python", "sqlalchemy", 'from sqlalchemy import text\nsearch = request.args.get("q", "")\nstmt = text("SELECT * FROM products WHERE name LIKE :s")\nresult = conn.execute(stmt, {"s": f"%{search}%"})'),
 
-    # ── Python: stored procedures ────────────────────────────────────────────
-    ("python", "callproc", 'uid = request.GET["id"]\ncursor.callproc("GetUser", [uid])'),
-    ("python", "callproc", 'name = request.form["username"]\ncursor.callproc("GetUserByName", (name,))'),
+def py_safe_placeholder_list(r):
+    return f'''
+def bulk_{ident(r, 'fn')}(request, conn):
+    ids = [int(x) for x in request.GET.getlist("id")]
+    placeholders = ",".join("?" for _ in ids)
+    sql = "SELECT * FROM users WHERE id IN (" + placeholders + ")"
+    return conn.execute(sql, ids).fetchall()
+'''
 
-    # ── Python: validation + parameterized ───────────────────────────────────
-    ("python", "validate_param",    'uid = request.GET.get("id", "")\nif not uid.isdigit():\n    abort(400)\ncursor.execute("SELECT * FROM users WHERE id = ?", (int(uid),))'),
-    ("python", "validate_param",    'name = request.form.get("name", "").strip()\nif len(name) > 100 or not name.replace(" ", "").isalnum():\n    abort(400)\ncursor.execute("SELECT * FROM users WHERE name = ?", (name,))'),
-    ("python", "whitelist_dyncol",  'allowed = {"name", "email", "age"}\ncol = request.GET["sort"]\nif col not in allowed:\n    abort(400)\ncursor.execute(f"SELECT * FROM users ORDER BY {col}")'),
-    ("python", "whitelist_dyntable",'allowed_tables = {"users", "products", "orders"}\ntable = request.GET.get("table")\nif table not in allowed_tables:\n    abort(400)\ncursor.execute("SELECT * FROM " + table)'),
 
-    # ── Python: ORM (no raw SQL at all) ──────────────────────────────────────
-    ("python", "orm", 'user_id = request.GET.get("uid")\nuser = User.objects.get(id=user_id)'),
-    ("python", "orm", 'name = form["username"]\nresults = User.query.filter_by(username=name).all()'),
-    ("python", "orm", 'email = request.args["email"]\nuser = db.session.query(User).filter(User.email == email).first()'),
-    ("python", "orm", 'category = request.GET["cat"]\nproducts = Product.objects.filter(category=category)'),
-    ("python", "orm", 'dept = request.form["department"]\nstaff = Employee.objects.filter(department=dept)'),
-    ("python", "orm", 'search = request.args.get("q", "")\nresults = Product.query.filter(Product.name.ilike(f"%{search}%")).all()'),
-    ("python", "orm", 'tag = request.GET.get("tag")\nresults = Post.objects.filter(tags__name=tag)'),
-    ("python", "orm", 'role = request.form["role"]\nperms = Permission.objects.filter(role=role)'),
-    ("python", "orm", 'uid = request.args.get("user_id")\norders = Order.objects.filter(user_id=uid)'),
+def py_safe_numeric_bounds(r):
+    return f'''
+def page_{ident(r, 'fn')}(request, conn):
+    size = min(max(int(request.GET.get("limit", 25)), 1), 100)
+    offset = max(int(request.GET.get("offset", 0)), 0)
+    sql = f"SELECT * FROM orders WHERE tenant_id = ? LIMIT {{size}} OFFSET {{offset}}"
+    return conn.execute(sql, (request.user.tenant_id,)).fetchall()
+'''
 
-    # ── Python: pure logic, no DB at all ─────────────────────────────────────
-    ("python", "no_db", 'items = [1, 2, 3, 4, 5]\nresult = [x * 2 for x in items if x > 2]\nreturn result'),
-    ("python", "no_db", 'name = request.form.get("name", "").upper()\nreturn name[:50]'),
-    ("python", "no_db", 'values = [int(x) for x in request.GET.getlist("ids") if x.isdigit()]\nreturn sum(values)'),
-    ("python", "no_db", 'data = request.json\nif not isinstance(data, dict):\n    raise ValueError("Bad input")\nreturn data.get("key", "")'),
-    ("python", "no_db", 'page = int(request.args.get("page", 1))\nlimit = min(int(request.args.get("limit", 10)), 100)\noffset = (page - 1) * limit\nreturn {"page": page, "limit": limit, "offset": offset}'),
-    ("python", "no_db", 'token = secrets.token_hex(32)\nexpiry = datetime.utcnow() + timedelta(hours=1)\nreturn {"token": token, "expiry": expiry.isoformat()}'),
 
-    # ── JavaScript: parameterized ────────────────────────────────────────────
-    ("javascript", "param", 'const uid = req.query.uid;\nconn.query("SELECT * FROM users WHERE id = ?", [uid]);'),
-    ("javascript", "param", 'const name = req.body.name;\ndb.query("SELECT * FROM users WHERE name = ?", [name], callback);'),
-    ("javascript", "param", 'const email = req.params.email;\npool.execute("SELECT * FROM accounts WHERE email = ?", [email]);'),
-    ("javascript", "param", 'const id = req.query.id;\nconnection.execute("SELECT * FROM orders WHERE user_id = ?", [id]);'),
-    ("javascript", "param", 'const search = req.body.search;\ndb.query("SELECT * FROM products WHERE name LIKE ?", [`%${search}%`]);'),
-    ("javascript", "param", 'const token = req.headers.authorization;\ndb.query("SELECT * FROM sessions WHERE token = ?", [token]);'),
-    ("javascript", "param", 'const cat = req.query.category;\ndb.execute("SELECT * FROM items WHERE category = ?", [cat]);'),
-    ("javascript", "param", 'const tag = req.body.tag;\npool.execute("SELECT * FROM posts WHERE tag = ?", [tag]);'),
-    ("javascript", "param", 'const status = req.query.status;\ndb.query("SELECT * FROM orders WHERE status = ?", [status]);'),
+def py_safe_sqlalchemy_params(r):
+    return f'''
+def repo_{ident(r, 'fn')}(request, session):
+    sql = text("SELECT id,email FROM users WHERE tenant_id=:tenant AND status=:status")
+    return session.execute(sql, {{"tenant": request.user.tenant_id, "status": request.GET.get("status")}}).fetchall()
+'''
 
-    # ── JavaScript: ORM ──────────────────────────────────────────────────────
-    ("javascript", "orm", 'const uid = req.query.uid;\nconst user = await User.findByPk(uid);'),
-    ("javascript", "orm", 'const name = req.body.name;\nconst users = await User.findAll({ where: { name } });'),
-    ("javascript", "orm", 'const email = req.body.email;\nconst user = await User.findOne({ where: { email } });'),
-    ("javascript", "orm", 'const cat = req.query.category;\nconst items = await Item.findAll({ where: { category: cat } });'),
-    ("javascript", "orm", 'const dept = req.body.department;\nconst staff = await Employee.findAll({ where: { department: dept } });'),
 
-    # ── PHP: prepared statements ─────────────────────────────────────────────
-    ("php", "param", '$uid = $_GET["id"];\n$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");\n$stmt->execute([$uid]);'),
-    ("php", "param", '$name = $_POST["username"];\n$stmt = $pdo->prepare("SELECT * FROM accounts WHERE name = ?");\n$stmt->execute([$name]);'),
-    ("php", "param", '$email = $_REQUEST["email"];\n$stmt = $mysqli->prepare("SELECT id FROM users WHERE email = ?");\n$stmt->bind_param("s", $email);\n$stmt->execute();'),
-    ("php", "param", '$pass = $_POST["password"];\n$stmt = $pdo->prepare("SELECT * FROM users WHERE password_hash = ?");\n$stmt->execute([password_hash($pass, PASSWORD_DEFAULT)]);'),
-    ("php", "param", '$cat = $_GET["category"];\n$stmt = $pdo->prepare("SELECT * FROM products WHERE cat = ?");\n$stmt->execute([$cat]);'),
-    ("php", "param", '$tag = $_GET["tag"];\n$stmt = $pdo->prepare("SELECT * FROM posts WHERE tag = ?");\n$stmt->execute([$tag]);'),
+def js_safe_sequelize_replacements(r):
+    return f'''
+async function list_{ident(r, 'fn')}(req, sequelize, QueryTypes) {{
+  const sql = "SELECT id,email FROM users WHERE tenant_id = :tenant AND status = :status";
+  return sequelize.query(sql, {{
+    replacements: {{ tenant: req.user.tenantId, status: req.query.status || "ACTIVE" }},
+    type: QueryTypes.SELECT
+  }});
+}}
+'''
 
-    # ── Java: PreparedStatement ──────────────────────────────────────────────
-    ("java", "param", 'String userId = request.getParameter("id");\nPreparedStatement stmt = conn.prepareStatement("SELECT * FROM users WHERE id = ?");\nstmt.setString(1, userId);\nResultSet rs = stmt.executeQuery();'),
-    ("java", "param", 'String name = request.getParameter("username");\nPreparedStatement ps = conn.prepareStatement("SELECT * FROM accounts WHERE name = ?");\nps.setString(1, name);\nps.executeQuery();'),
-    ("java", "param", 'String email = request.getParameter("email");\nPreparedStatement ps = conn.prepareStatement("SELECT id FROM users WHERE email = ?");\nps.setString(1, email);\nResultSet rs = ps.executeQuery();'),
-    ("java", "param", 'String search = request.getParameter("q");\nPreparedStatement stmt = conn.prepareStatement("SELECT * FROM products WHERE name LIKE ?");\nstmt.setString(1, "%" + search + "%");\nResultSet rs = stmt.executeQuery();'),
-    ("java", "param", 'String dept = request.getParameter("dept");\nPreparedStatement ps = conn.prepareStatement("SELECT * FROM staff WHERE dept = ?");\nps.setString(1, dept);\nResultSet rs = ps.executeQuery();'),
-    ("java", "param", 'String tag = request.getParameter("tag");\nPreparedStatement stmt = conn.prepareStatement("SELECT * FROM posts WHERE tag = ?");\nstmt.setString(1, tag);\nResultSet rs = stmt.executeQuery();'),
 
-    # ── Whitelist-guarded dynamic SQL (looks vulnerable, is safe) ────────────
-    # These are critical: f-string / concat into a SQL string IS used, but the
-    # interpolated value is constrained to a fixed set first. The model must
-    # learn to read the validation context, not just react to FSTRING_SQL.
+def js_safe_knex_params(r):
+    return f'''
+async function repo_{ident(r, 'fn')}(req, knex) {{
+  return knex("users")
+    .where("tenant_id", req.user.tenantId)
+    .andWhere("status", req.query.status || "ACTIVE")
+    .select("id", "email");
+}}
+'''
 
-    # Python: set whitelist for ORDER BY column
-    ("python", "whitelist_set_orderby",
-     'ALLOWED = {"name", "price", "created_at"}\ncol = request.GET["sort"]\nif col not in ALLOWED:\n    raise ValueError("invalid sort")\ncursor.execute(f"SELECT * FROM products ORDER BY {col}")'),
-    ("python", "whitelist_set_orderby",
-     'SAFE_COLS = {"id", "email", "username"}\nsort_by = request.args.get("sort", "id")\nif sort_by not in SAFE_COLS:\n    abort(400)\ncursor.execute(f"SELECT * FROM users ORDER BY {sort_by} ASC")'),
-    ("python", "whitelist_frozenset",
-     'COLUMNS = frozenset({"name","price","stock"})\nc = request.args["c"]\nif c not in COLUMNS:\n    raise ValueError\nq = f"SELECT id, {c} FROM products"\ncursor.execute(q)'),
 
-    # Python: tuple/list whitelist for sort direction
-    ("python", "whitelist_tuple_dir",
-     'direction = request.GET.get("dir", "ASC")\nif direction not in ("ASC", "DESC"):\n    raise ValueError\ncursor.execute(f"SELECT * FROM users ORDER BY id {direction}")'),
-    ("python", "whitelist_list_dir",
-     'order = request.args.get("order")\nallowed = ["asc", "desc"]\nif order not in allowed:\n    abort(400)\ncursor.execute(f"SELECT * FROM events ORDER BY date {order}")'),
+def js_safe_allowlist_order(r):
+    return f'''
+async function list_{ident(r, 'fn')}(req, db) {{
+  const allowed = new Set(["created_at", "email", "name"]);
+  const dirAllowed = new Set(["ASC", "DESC"]);
+  const sort = allowed.has(req.query.sort) ? req.query.sort : "created_at";
+  const dir = dirAllowed.has(req.query.dir) ? req.query.dir : "ASC";
+  const sql = `SELECT id,email FROM users WHERE tenant_id = ? ORDER BY ${{sort}} ${{dir}}`;
+  return db.all(sql, [req.user.tenantId]);
+}}
+'''
 
-    # Python: dict mapping (user key -> safe SQL fragment)
-    ("python", "whitelist_dict_map",
-     'SORT_MAP = {"name": "u.name", "date": "u.created_at", "id": "u.id"}\nkey = request.args.get("sort")\nfragment = SORT_MAP.get(key, "u.id")\ncursor.execute(f"SELECT * FROM users u ORDER BY {fragment}")'),
-    ("python", "whitelist_dict_table",
-     'TABLE_MAP = {"u": "users", "p": "products", "o": "orders"}\nkey = request.GET["t"]\ntable = TABLE_MAP.get(key)\nif not table:\n    return []\ncursor.execute(f"SELECT id FROM {table}")'),
 
-    # Python: hardcoded constant interpolated into f-string (no user input there)
-    ("python", "constant_in_fstring",
-     'TABLE = "audit_log"\nuid = request.GET.get("uid")\ncursor.execute(f"SELECT * FROM {TABLE} WHERE user_id = ?", (uid,))'),
-    ("python", "constant_in_fstring",
-     'SCHEMA = "public"\ncursor.execute(f"SELECT count(*) FROM {SCHEMA}.users")'),
+def js_safe_placeholder_list(r):
+    return f'''
+async function bulk_{ident(r, 'fn')}(req, db) {{
+  const ids = (req.query.ids || []).map(Number).filter(Number.isInteger);
+  const placeholders = ids.map(() => "?").join(",");
+  const sql = "SELECT * FROM users WHERE id IN (" + placeholders + ")";
+  return db.all(sql, ids);
+}}
+'''
 
-    # Python: regex validation before f-string
-    ("python", "regex_validate_then_fstring",
-     'import re\ncol = request.args.get("col", "")\nif not re.fullmatch(r"[a-z_]{1,32}", col):\n    abort(400)\ncursor.execute(f"SELECT {col} FROM users")'),
 
-    # Python: enum-based whitelist
-    ("python", "enum_whitelist",
-     'from enum import Enum\nclass Direction(Enum):\n    ASC = "ASC"\n    DESC = "DESC"\ndir_str = Direction(request.args["d"]).value\ncursor.execute(f"SELECT * FROM rows ORDER BY id {dir_str}")'),
+def java_safe_jdbctemplate(r):
+    cls = ident(r, "Repo").replace("_", "")
+    return f'''
+class {cls} {{
+  java.util.List<User> list(HttpServletRequest req, JdbcTemplate jdbc) {{
+    String sql = "SELECT id,email FROM users WHERE tenant_id = ? AND status = ?";
+    return jdbc.query(sql, new Object[] {{ req.getUserPrincipal().getName(), req.getParameter("status") }}, mapper);
+  }}
+}}
+'''
 
-    # Python: if/elif chain selecting fully hardcoded queries
-    ("python", "hardcoded_branch",
-     'mode = request.args.get("mode")\nif mode == "active":\n    cursor.execute("SELECT * FROM users WHERE active = 1")\nelif mode == "all":\n    cursor.execute("SELECT * FROM users")\nelse:\n    abort(400)'),
 
-    # JavaScript: array whitelist + template literal
-    ("javascript", "whitelist_array_orderby",
-     'const ALLOWED = ["name", "price", "created_at"];\nconst sort = req.query.sort;\nif (!ALLOWED.includes(sort)) {\n  return res.status(400).end();\n}\ndb.query(`SELECT * FROM products ORDER BY ${sort}`);'),
-    ("javascript", "whitelist_set_has",
-     'const COLS = new Set(["id","email","username"]);\nconst c = req.query.c;\nif (!COLS.has(c)) {\n  throw new Error("bad column");\n}\ndb.query(`SELECT ${c} FROM users`);'),
-    ("javascript", "whitelist_object_map",
-     'const SORT_MAP = { name: "u.name", date: "u.created_at" };\nconst key = req.query.sort;\nconst frag = SORT_MAP[key];\nif (!frag) {\n  return res.status(400).end();\n}\ndb.query(`SELECT * FROM users u ORDER BY ${frag}`);'),
-    ("javascript", "constant_in_template",
-     'const TABLE = "audit_log";\nconst uid = req.query.uid;\ndb.query(`SELECT * FROM ${TABLE} WHERE user_id = ?`, [uid]);'),
-    ("javascript", "regex_validate_template",
-     'const col = req.query.col || "";\nif (!/^[a-z_]{1,32}$/.test(col)) {\n  return res.status(400).end();\n}\ndb.query(`SELECT ${col} FROM users`);'),
+def java_safe_jpa_setparameter(r):
+    cls = ident(r, "Repo").replace("_", "")
+    return f'''
+class {cls} {{
+  java.util.List<?> list(HttpServletRequest req, EntityManager em) {{
+    Query q = em.createNativeQuery("SELECT id,email FROM users WHERE tenant_id = :tenant AND status = :status");
+    q.setParameter("tenant", req.getUserPrincipal().getName());
+    q.setParameter("status", req.getParameter("status"));
+    return q.getResultList();
+  }}
+}}
+'''
 
-    # PHP: array whitelist + dot concat
-    ("php", "whitelist_array_orderby",
-     '$allowed = ["name", "price", "created_at"];\n$sort = $_GET["sort"] ?? "name";\nif (!in_array($sort, $allowed, true)) {\n    http_response_code(400);\n    exit;\n}\n$query = "SELECT * FROM products ORDER BY " . $sort;\nmysqli_query($conn, $query);'),
-    ("php", "whitelist_array_table",
-     '$tables = ["users", "products", "orders"];\n$t = $_GET["t"] ?? "";\nif (!in_array($t, $tables, true)) {\n    die("bad table");\n}\n$query = "SELECT id FROM " . $t;\n$conn->query($query);'),
-    ("php", "whitelist_assoc_map",
-     '$sort_map = ["name" => "u.name", "date" => "u.created_at"];\n$key = $_GET["sort"] ?? "name";\nif (!isset($sort_map[$key])) {\n    http_response_code(400);\n    exit;\n}\n$frag = $sort_map[$key];\n$query = "SELECT * FROM users u ORDER BY " . $frag;\nmysqli_query($conn, $query);'),
-    ("php", "regex_validate_concat",
-     '$col = $_GET["col"] ?? "";\nif (!preg_match("/^[a-z_]{1,32}$/", $col)) {\n    http_response_code(400);\n    exit;\n}\n$query = "SELECT " . $col . " FROM users";\nmysqli_query($conn, $query);'),
-    ("php", "constant_in_string",
-     '$TABLE = "audit_log";\n$uid = $_GET["uid"] ?? "";\n$stmt = $pdo->prepare("SELECT * FROM " . $TABLE . " WHERE user_id = ?");\n$stmt->execute([$uid]);'),
 
-    # Java: Set whitelist + concat into PreparedStatement (safe because column is fixed-set)
-    ("java", "whitelist_set_orderby",
-     'Set<String> ALLOWED = Set.of("name", "price", "created_at");\nString sort = request.getParameter("sort");\nif (!ALLOWED.contains(sort)) {\n    response.sendError(400);\n    return;\n}\nString sql = "SELECT * FROM products ORDER BY " + sort;\nResultSet rs = stmt.executeQuery(sql);'),
-    ("java", "whitelist_switch_hardcoded",
-     'String mode = request.getParameter("mode");\nString sql;\nswitch (mode) {\n    case "active": sql = "SELECT * FROM users WHERE active = 1"; break;\n    case "all":    sql = "SELECT * FROM users"; break;\n    default: response.sendError(400); return;\n}\nResultSet rs = stmt.executeQuery(sql);'),
-    ("java", "whitelist_map_lookup",
-     'Map<String, String> SORT_MAP = Map.of("name", "u.name", "date", "u.created_at");\nString key = request.getParameter("sort");\nString frag = SORT_MAP.get(key);\nif (frag == null) {\n    response.sendError(400);\n    return;\n}\nString sql = "SELECT * FROM users u ORDER BY " + frag;\nResultSet rs = stmt.executeQuery(sql);'),
-    # ── Dynamic IN-clause with placeholders (common safe idiom) ──────────────
-    # The query uses an f-string only to inject `?,?,?` placeholders whose
-    # count matches the user input list. The actual values flow through
-    # parameterised execute. Looks suspicious (FSTRING_SQL fires) but is safe.
-    # The model previously misclassified this around 0.5 — adding it here.
-    ("python", "in_clause_placeholders",
-     'def get_users_by_ids(ids):\n    placeholders = ",".join("?" for _ in ids)\n    sql = f"SELECT * FROM users WHERE id IN ({placeholders})"\n    cursor.execute(sql, tuple(ids))'),
-    ("python", "in_clause_placeholders",
-     'def get_regions(tenant_id, regions):\n    placeholders = ",".join("?" for _ in regions)\n    sql = f"SELECT * FROM reports WHERE tenant_id = ? AND region IN ({placeholders})"\n    params = [tenant_id] + list(regions)\n    cursor.execute(sql, tuple(params))'),
-    ("python", "in_clause_placeholders",
-     'def find_by_status(statuses):\n    if not statuses:\n        return []\n    qmarks = ",".join(["?"] * len(statuses))\n    cursor.execute(f"SELECT * FROM orders WHERE status IN ({qmarks})", tuple(statuses))'),
-    ("python", "in_clause_placeholders",
-     'def fetch_records(tenant_id, ids):\n    placeholders = ", ".join("?" * len(ids))\n    cursor.execute(f"DELETE FROM records WHERE tenant_id = ? AND id IN ({placeholders})", (tenant_id, *ids))'),
-    ("python", "in_clause_placeholders",
-     'def lookup_by_keys(keys):\n    qs = ",".join("?" for k in keys)\n    sql = f"SELECT k, v FROM kv WHERE k IN ({qs})"\n    cursor.execute(sql, keys)'),
+def java_safe_prepared_order(r):
+    cls = ident(r, "Svc").replace("_", "")
+    return f'''
+class {cls} {{
+  ResultSet list(HttpServletRequest req, Connection c) throws Exception {{
+    java.util.Set<String> allowed = java.util.Set.of("created_at", "email", "name");
+    String sort = allowed.contains(req.getParameter("sort")) ? req.getParameter("sort") : "created_at";
+    String sql = "SELECT id,email FROM users WHERE tenant_id = ? ORDER BY " + sort;
+    PreparedStatement ps = c.prepareStatement(sql);
+    ps.setString(1, req.getUserPrincipal().getName());
+    return ps.executeQuery();
+  }}
+}}
+'''
 
-    ("java", "constant_in_concat",
-     'final String TABLE = "audit_log";\nString uid = request.getParameter("uid");\nPreparedStatement ps = conn.prepareStatement("SELECT * FROM " + TABLE + " WHERE user_id = ?");\nps.setString(1, uid);\nps.executeQuery();'),
 
-    # ── Static DDL — schema/index/view setup (NO user input) ─────────────────
-    # These are safe by construction: the executed SQL is a hardcoded literal,
-    # there is no source of dynamic input. The model previously over-reacted
-    # to multi-line SQL strings inside cursor.execute(), giving 0.7+ scores
-    # on schema setup code. Training on these patterns calibrates that down.
+def php_safe_laravel_bindings(r):
+    return f'''<?php
+function list_{ident(r, 'fn')}($request) {{
+    $sql = "SELECT id,email FROM users WHERE tenant_id = ? AND status = ?";
+    return DB::select($sql, [$request->user()->tenant_id, $request->input("status", "ACTIVE")]);
+}}
+?>'''
 
-    # Python: CREATE TABLE
-    ("python", "ddl_create_table",
-     'def create_schema(db_path):\n    conn = sqlite3.connect(db_path)\n    cur = conn.cursor()\n    cur.execute("""CREATE TABLE IF NOT EXISTS users (\n        id INTEGER PRIMARY KEY AUTOINCREMENT,\n        email TEXT NOT NULL UNIQUE,\n        created_at TEXT NOT NULL\n    )""")\n    conn.commit()'),
-    ("python", "ddl_create_multi",
-     'def init_db(conn):\n    cur = conn.cursor()\n    cur.execute("""CREATE TABLE IF NOT EXISTS posts (\n        id INTEGER PRIMARY KEY,\n        title TEXT NOT NULL,\n        body TEXT NOT NULL\n    )""")\n    cur.execute("""CREATE TABLE IF NOT EXISTS tags (\n        id INTEGER PRIMARY KEY,\n        name TEXT UNIQUE\n    )""")\n    conn.commit()'),
-    ("python", "ddl_create_index",
-     'def add_indexes(conn):\n    cur = conn.cursor()\n    cur.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)")\n    cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_created ON posts (created_at DESC)")\n    conn.commit()'),
-    ("python", "ddl_create_view",
-     'def setup_views(conn):\n    cur = conn.cursor()\n    cur.execute("""CREATE VIEW IF NOT EXISTS active_users AS\n        SELECT id, email FROM users WHERE is_active = 1\n    """)\n    conn.commit()'),
-    ("python", "ddl_pragma",
-     'def configure_db(conn):\n    cur = conn.cursor()\n    cur.execute("PRAGMA foreign_keys = ON")\n    cur.execute("PRAGMA journal_mode = WAL")\n    cur.execute("PRAGMA synchronous = NORMAL")'),
-    ("python", "ddl_alter_table",
-     'def migrate_v2(conn):\n    cur = conn.cursor()\n    cur.execute("ALTER TABLE users ADD COLUMN last_login TEXT")\n    cur.execute("ALTER TABLE users ADD COLUMN locale TEXT DEFAULT \'en\'")\n    conn.commit()'),
-    ("python", "ddl_drop",
-     'def teardown(conn):\n    cur = conn.cursor()\n    cur.execute("DROP TABLE IF EXISTS temp_imports")\n    cur.execute("DROP INDEX IF EXISTS idx_temp")\n    conn.commit()'),
-    ("python", "ddl_with_session",
-     'def create_schema(db_path):\n    with DatabaseSession(db_path) as conn:\n        cur = conn.cursor()\n        cur.execute("""CREATE TABLE IF NOT EXISTS app_users (\n            id INTEGER PRIMARY KEY,\n            email TEXT NOT NULL UNIQUE\n        )""")\n        conn.commit()'),
-    ("python", "ddl_seed_executemany",
-     'def seed(conn):\n    cur = conn.cursor()\n    rows = [(1, "Alice"), (2, "Bob"), (3, "Charlie")]\n    cur.executemany("INSERT INTO users (id, name) VALUES (?, ?)", rows)\n    conn.commit()'),
-    ("python", "ddl_static_select",
-     'def get_table_count(conn):\n    cur = conn.cursor()\n    cur.execute("SELECT COUNT(*) FROM users")\n    return cur.fetchone()[0]'),
 
-    # JavaScript: schema setup
-    ("javascript", "ddl_create_table",
-     'async function createSchema(db) {\n    await db.query(`CREATE TABLE IF NOT EXISTS users (\n        id SERIAL PRIMARY KEY,\n        email VARCHAR(255) UNIQUE NOT NULL\n    )`);\n}'),
-    ("javascript", "ddl_create_index",
-     'async function addIndexes(db) {\n    await db.query("CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)");\n    await db.query("CREATE INDEX IF NOT EXISTS idx_posts_created ON posts (created_at DESC)");\n}'),
+def php_safe_pdo_prepare(r):
+    return f'''<?php
+function list_{ident(r, 'fn')}($pdo, $q) {{
+    $sql = "SELECT id,email FROM users WHERE tenant_id = ? AND status = ?";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$q["tenant"], $q["status"] ?? "ACTIVE"]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}}
+?>'''
 
-    # PHP: schema setup
-    ("php", "ddl_create_table",
-     'function createSchema($pdo) {\n    $pdo->exec("CREATE TABLE IF NOT EXISTS users (\n        id INT AUTO_INCREMENT PRIMARY KEY,\n        email VARCHAR(255) UNIQUE NOT NULL\n    )");\n}'),
-    ("php", "ddl_alter",
-     'function migrate($pdo) {\n    $pdo->exec("ALTER TABLE users ADD COLUMN last_login DATETIME NULL");\n    $pdo->exec("ALTER TABLE users ADD COLUMN locale VARCHAR(8) DEFAULT \'en\'");\n}'),
 
-    # Java: schema setup
-    ("java", "ddl_create_table",
-     'public void createSchema(Connection conn) throws SQLException {\n    Statement stmt = conn.createStatement();\n    stmt.execute("CREATE TABLE IF NOT EXISTS users (id BIGINT PRIMARY KEY, email VARCHAR(255) UNIQUE)");\n    stmt.close();\n}'),
-    ("java", "ddl_create_index",
-     'public void addIndexes(Connection conn) throws SQLException {\n    Statement stmt = conn.createStatement();\n    stmt.execute("CREATE INDEX idx_users_email ON users (email)");\n    stmt.close();\n}'),
+def php_safe_array_allowlist(r):
+    return f'''<?php
+function list_{ident(r, 'fn')}($pdo, $q) {{
+    $columns = ["name" => "name", "email" => "email", "created" => "created_at"];
+    $sort = $columns[$q["sort"] ?? "created"] ?? "created_at";
+    $sql = "SELECT id,email FROM users WHERE tenant_id = ? ORDER BY " . $sort;
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$q["tenant"]]);
+    return $stmt->fetchAll();
+}}
+?>'''
 
-    # ── Whitelist-validated dynamic identifiers (Gap-A v2 Fix B) ─────────────
-    # Strict-allowlist ORDER BY / column / table identifier construction.
-    # All emit FSTRING_SQL (or string concat) but ALSO emit WHITELIST_VAR,
-    # which lets the type head learn this is NONE and the rule layer treat
-    # it as safe.
 
-    ("python", "whitelist_order_by",
-     'ALLOWED_SORT_COLUMNS = {"id", "name", "created_at"}\ndef list_users(sort_by):\n    safe_col = sort_by if sort_by in ALLOWED_SORT_COLUMNS else "created_at"\n    sql = f"SELECT id, name FROM users ORDER BY {safe_col}"\n    cursor.execute(sql)'),
-    ("python", "whitelist_order_by",
-     'ALLOWED_SORT_ORDERS = {"ASC", "DESC"}\ndef sort_dir(d):\n    safe_d = d.upper() if d.upper() in ALLOWED_SORT_ORDERS else "DESC"\n    sql = f"SELECT * FROM products ORDER BY price {safe_d}"\n    cursor.execute(sql)'),
-    ("python", "whitelist_order_by",
-     'ALLOWED_SORT_COLUMNS = {"id", "customer_name", "amount", "created_at"}\nALLOWED_SORT_ORDERS = {"ASC", "DESC"}\ndef list_invoices(tenant_id, sort_by, sort_order):\n    safe_col = sort_by if sort_by in ALLOWED_SORT_COLUMNS else "created_at"\n    safe_dir = sort_order.upper() if sort_order.upper() in ALLOWED_SORT_ORDERS else "DESC"\n    sql = f"SELECT id, customer_name FROM invoices WHERE tenant_id = ? ORDER BY {safe_col} {safe_dir}"\n    cursor.execute(sql, (tenant_id,))'),
-    ("python", "whitelist_table",
-     'ALLOWED_TABLES = {"users", "orders", "products"}\ndef get_count(table):\n    safe_table = table if table in ALLOWED_TABLES else "users"\n    sql = f"SELECT COUNT(*) FROM {safe_table}"\n    cursor.execute(sql)'),
-    ("python", "whitelist_column",
-     'VALID_COLUMNS = {"email", "username", "id"}\ndef find_by(col, val):\n    safe_col = col if col in VALID_COLUMNS else "id"\n    cursor.execute(f"SELECT * FROM users WHERE {safe_col} = ?", (val,))'),
-    ("python", "whitelist_concat",
-     'ALLOWED_FIELDS = {"name", "email"}\ndef sort_field(field):\n    safe_f = field if field in ALLOWED_FIELDS else "name"\n    sql = "SELECT * FROM users ORDER BY " + safe_f\n    cursor.execute(sql)'),
-    ("python", "whitelist_dict_lookup",
-     'SAFE_COLUMN_MAP = {"name": "customer_name", "date": "created_at"}\ndef lookup(col):\n    safe_col = SAFE_COLUMN_MAP[col] if col in SAFE_COLUMN_MAP else "customer_name"\n    sql = f"SELECT id FROM customers ORDER BY {safe_col}"\n    cursor.execute(sql)'),
-    ("python", "whitelist_with_param",
-     'ALLOWED_SORT_COLUMNS = {"id", "name"}\ndef search(name, sort_by):\n    safe_col = sort_by if sort_by in ALLOWED_SORT_COLUMNS else "id"\n    sql = f"SELECT * FROM users WHERE name LIKE ? ORDER BY {safe_col}"\n    cursor.execute(sql, (f"%{name}%",))'),
+def php_safe_placeholder_list(r):
+    return f'''<?php
+function bulk_{ident(r, 'fn')}($pdo, $ids) {{
+    $ids = array_map('intval', $ids);
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $sql = "SELECT * FROM users WHERE id IN (" . $placeholders . ")";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($ids);
+    return $stmt->fetchAll();
+}}
+?>'''
 
-    ("javascript", "whitelist_order_by",
-     'const ALLOWED_SORT_COLUMNS = new Set(["id", "name", "created_at"]);\nfunction listUsers(sortBy) {\n    const safeCol = ALLOWED_SORT_COLUMNS.has(sortBy) ? sortBy : "created_at";\n    const sql = `SELECT id, name FROM users ORDER BY ${safeCol}`;\n    db.query(sql);\n}'),
-    ("javascript", "whitelist_order_by",
-     'const VALID_ORDERS = new Set(["ASC", "DESC"]);\nasync function listProducts(order) {\n    const safeOrder = VALID_ORDERS.has(order.toUpperCase()) ? order.toUpperCase() : "DESC";\n    await db.query(`SELECT * FROM products ORDER BY price ${safeOrder}`);\n}'),
 
-    ("php", "whitelist_order_by",
-     '$ALLOWED_SORT_COLUMNS = ["id", "name", "created_at"];\nfunction listUsers($pdo, $sortBy) {\n    global $ALLOWED_SORT_COLUMNS;\n    $safeCol = in_array($sortBy, $ALLOWED_SORT_COLUMNS) ? $sortBy : "created_at";\n    $sql = "SELECT id, name FROM users ORDER BY $safeCol";\n    $pdo->query($sql);\n}'),
+# Vulnerable counterexamples with similar surface syntax. These prevent V9 from
+# learning the simplistic rule "prepared/allowlist nearby means safe".
+def py_vuln_raw_order(r):
+    return f'''
+def list_{ident(r, 'fn')}(request, conn):
+    safe = {{"name": "name", "created": "created_at"}}.get(request.GET.get("sort"), "created_at")
+    raw = request.GET.get("sort", "")
+    sql = "SELECT id,email FROM users ORDER BY " + raw
+    return conn.execute(sql).fetchall()
+'''
 
-    ("java", "whitelist_order_by",
-     'private static final Set<String> ALLOWED_SORT_COLUMNS = Set.of("id", "name", "created_at");\npublic ResultSet listUsers(String sortBy) throws SQLException {\n    String safeCol = ALLOWED_SORT_COLUMNS.contains(sortBy) ? sortBy : "created_at";\n    String sql = "SELECT id, name FROM users ORDER BY " + safeCol;\n    return stmt.executeQuery(sql);\n}'),
 
-    # ── BLIND with boolean-coerced fetch result (Gap-A v2 Fix B) ─────────────
-    # User input → SQL → fetch → reduce to bool. Distinguishes BLIND from
-    # SECOND_ORDER (which has DB_LOADED_VAR but NOT BOOLEAN_SINK).
+def js_vuln_sequelize_raw(r):
+    return f'''
+async function list_{ident(r, 'fn')}(req, sequelize) {{
+  const status = req.query.status || "ACTIVE";
+  const sql = `SELECT id,email FROM users WHERE status='${{status}}'`;
+  return sequelize.query(sql);
+}}
+'''
 
-    ("python", "blind_count_gt",
-     'def can_view(user_email, invoice_id):\n    sql = "SELECT COUNT(*) FROM acl WHERE email = \'" + user_email + "\' AND id = " + invoice_id\n    cursor.execute(sql)\n    result = cursor.fetchone()[0] > 0\n    return result'),
-    ("python", "blind_count_gt",
-     'def is_admin(user_id):\n    sql = "SELECT COUNT(*) FROM admins WHERE user_id = " + user_id\n    cursor.execute(sql)\n    return cursor.fetchone()[0] > 0'),
-    ("python", "blind_is_not_none",
-     'def authenticate(username, password):\n    sql = "SELECT 1 FROM users WHERE u = \'" + username + "\' AND p = \'" + password + "\'"\n    cursor.execute(sql)\n    return cursor.fetchone() is not None'),
-    ("python", "blind_is_not_none",
-     'def has_session(token):\n    sql = "SELECT 1 FROM sessions WHERE token = \'" + token + "\'"\n    cursor.execute(sql)\n    row = cursor.fetchone()\n    return row is not None'),
-    ("python", "blind_count_eq",
-     'def is_owner(user_id, post_id):\n    sql = "SELECT COUNT(*) FROM posts WHERE id = " + post_id + " AND owner = " + user_id\n    cursor.execute(sql)\n    return cursor.fetchone()[0] == 1'),
-    ("python", "blind_bool_wrap",
-     'def has_permission(uid, perm):\n    sql = f"SELECT 1 FROM perms WHERE uid = {uid} AND name = \'{perm}\'"\n    cursor.execute(sql)\n    return bool(cursor.fetchone())'),
-    ("python", "blind_temp_var",
-     'def can_edit(user_id, doc_id):\n    sql = f"SELECT COUNT(*) FROM doc_acl WHERE user = {user_id} AND doc = {doc_id} AND edit = 1"\n    cursor.execute(sql)\n    n = cursor.fetchone()[0]\n    return n > 0'),
-    ("python", "blind_complex_acl",
-     'def can_view_invoice(user_email, invoice_id):\n    sql = ("SELECT COUNT(*) FROM invoice_acl a JOIN users u ON u.id = a.user_id "\n           "WHERE u.email = \'" + user_email + "\' AND a.invoice_id = " + invoice_id + " AND a.can_view = 1")\n    cursor.execute(sql)\n    return cursor.fetchone()[0] > 0'),
-    ("python", "blind_concat_login",
-     'def login(username, pw_hash):\n    sql = "SELECT 1 FROM users WHERE u = \'" + username + "\' AND h = \'" + pw_hash + "\'"\n    cursor.execute(sql)\n    row = cursor.fetchone()\n    return row is not None'),
-    ("python", "blind_fstring_count",
-     'def has_role(user_id, role):\n    sql = f"SELECT COUNT(*) FROM user_roles WHERE u = {user_id} AND r = \'{role}\'"\n    cursor.execute(sql)\n    return cursor.fetchone()[0] > 0'),
-    ("python", "blind_orm_like_concat",
-     'def is_member(uid, gid):\n    sql = "SELECT 1 FROM members WHERE uid = " + str(uid) + " AND gid = " + str(gid)\n    cursor.execute(sql)\n    return cursor.fetchone() is not None'),
-    ("python", "blind_negative_check",
-     'def is_blocked(email):\n    sql = "SELECT 1 FROM blocklist WHERE email = \'" + email + "\'"\n    cursor.execute(sql)\n    return cursor.fetchone() is None'),
 
-    ("javascript", "blind_count_gt",
-     'async function isAdmin(userId) {\n    const sql = "SELECT COUNT(*) FROM admins WHERE user_id = " + userId;\n    const rows = await db.query(sql);\n    return rows[0].count > 0;\n}'),
-    ("javascript", "blind_is_not_none",
-     'async function authenticate(username, password) {\n    const sql = `SELECT 1 FROM users WHERE u = \'${username}\' AND p = \'${password}\'`;\n    const row = await db.queryOne(sql);\n    return row !== null;\n}'),
+def java_vuln_jdbc_raw(r):
+    cls = ident(r, "Bad").replace("_", "")
+    return f'''
+class {cls} {{
+  ResultSet list(HttpServletRequest req, Statement st) throws Exception {{
+    String status = req.getParameter("status");
+    String sql = "SELECT id,email FROM users WHERE status='" + status + "'";
+    return st.executeQuery(sql);
+  }}
+}}
+'''
 
-    ("php", "blind_count_gt",
-     'function isAdmin($mysqli, $userId) {\n    $sql = "SELECT COUNT(*) FROM admins WHERE user_id = " . $userId;\n    $r = mysqli_query($mysqli, $sql);\n    $row = mysqli_fetch_row($r);\n    return $row[0] > 0;\n}'),
 
-    ("java", "blind_count_gt",
-     'public boolean isAdmin(String userId) throws SQLException {\n    String sql = "SELECT COUNT(*) FROM admins WHERE user_id = " + userId;\n    ResultSet rs = stmt.executeQuery(sql);\n    rs.next();\n    return rs.getInt(1) > 0;\n}'),
+def php_vuln_pdo_raw_order(r):
+    return f'''<?php
+function list_{ident(r, 'fn')}($pdo, $q) {{
+    $stmt = $pdo->prepare("SELECT id FROM tenants WHERE id=?");
+    $stmt->execute([$q["tenant"]]);
+    $raw = $q["sort"] ?? "";
+    $sql = "SELECT id,email FROM users ORDER BY " . $raw;
+    return $pdo->query($sql)->fetchAll();
+}}
+?>'''
 
-    # ── SECOND_ORDER with DB-loaded fragment reuse (Gap-A v2 Fix B) ──────────
-    # The dangerous variable comes from a fetch call, then is concatenated
-    # into a NEW SQL query. Critical: NO BOOLEAN_SINK (distinguishes from BLIND).
 
-    ("python", "second_order_cached_fragment",
-     'def render(report_id, tenant_id):\n    cursor.execute("SELECT cached_where FROM cache WHERE id = ? AND t = ?", (report_id, tenant_id))\n    cached_where = cursor.fetchone()[0]\n    sql = "SELECT id, name FROM invoices WHERE t = " + str(tenant_id) + " AND " + cached_where\n    cursor.execute(sql)'),
-    ("python", "second_order_stored_bio",
-     'def update_status(user_id):\n    cursor.execute("SELECT bio FROM profiles WHERE user_id = ?", (user_id,))\n    user_bio = cursor.fetchone()[0]\n    log = "INSERT INTO audit (msg) VALUES (\'updated: " + user_bio + "\')"\n    cursor.executescript(log)'),
-    ("python", "second_order_username_reuse",
-     'def render_profile(user_id):\n    cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))\n    name = cursor.fetchone()[0]\n    cursor.execute("SELECT * FROM activity WHERE actor = \'" + name + "\'")'),
-    ("python", "second_order_cached_filter",
-     'def list_records(filter_id):\n    cursor.execute("SELECT filter_sql FROM saved_filters WHERE id = ?", (filter_id,))\n    raw = cursor.fetchone()[0]\n    sql = "SELECT * FROM records WHERE " + raw\n    cursor.execute(sql)'),
-    ("python", "second_order_tag_reuse",
-     'def show_tag_posts(tag_id):\n    cursor.execute("SELECT tag FROM tags WHERE id = ?", (tag_id,))\n    tag = cursor.fetchone()[0]\n    cursor.execute(f"SELECT * FROM posts WHERE tags LIKE \'%{tag}%\'")'),
-    ("python", "second_order_role_reuse",
-     'def get_perms(user_id):\n    cursor.execute("SELECT role FROM users WHERE id = ?", (user_id,))\n    role = cursor.fetchone()[0]\n    cursor.execute("SELECT permission FROM role_perms WHERE role = \'" + role + "\'")'),
-    ("python", "second_order_email_reuse",
-     'def notify(uid):\n    cursor.execute("SELECT email FROM users WHERE id = ?", (uid,))\n    email = cursor.fetchone()[0]\n    cursor.execute(f"SELECT * FROM notifications WHERE recipient = \'{email}\'")'),
-    ("python", "second_order_template_lookup",
-     'def render_email(template_id):\n    cursor.execute("SELECT body FROM templates WHERE id = ?", (template_id,))\n    body = cursor.fetchone()[0]\n    cursor.execute("INSERT INTO outbox (content) VALUES (\'" + body + "\')")'),
-    ("python", "second_order_setting_reuse",
-     'def apply_setting(uid):\n    cursor.execute("SELECT pref FROM user_settings WHERE uid = ?", (uid,))\n    pref = cursor.fetchone()[0]\n    cursor.execute(f"UPDATE config SET value = \'{pref}\' WHERE uid = {uid}")'),
-    ("python", "second_order_via_fetchall",
-     'def reapply_filters(uid):\n    rows = cursor.execute("SELECT raw_filter FROM filters WHERE uid = ?", (uid,)).fetchall()\n    for row in rows:\n        sql = "SELECT * FROM data WHERE " + row[0]\n        cursor.execute(sql)'),
+def generic_blind(lang: str, r: random.Random) -> str:
+    if lang == "python":
+        return f'''\ndef can_{ident(r, 'fn')}(request, conn):\n    token = request.GET.get("token", "")\n    sql = "SELECT id FROM sessions WHERE token='" + token + "'"\n    row = conn.execute(sql).fetchone()\n    return row is not None\n'''
+    if lang == "javascript":
+        return f'''\nasync function can_{ident(r, 'fn')}(req, db) {{\n  const token = req.query.token || "";\n  const sql = `SELECT id FROM sessions WHERE token='${{token}}'`;\n  const row = await db.get(sql);\n  return !!row;\n}}\n'''
+    if lang == "java":
+        cls = ident(r, "Auth").replace("_", "")
+        return f'''\nclass {cls} {{\n  boolean can(HttpServletRequest req, Statement st) throws Exception {{\n    String token = req.getParameter("token");\n    ResultSet rs = st.executeQuery("SELECT id FROM sessions WHERE token='" + token + "'");\n    return rs.next();\n  }}\n}}\n'''
+    return f'''<?php\nfunction can_{ident(r, 'fn')}($mysqli, $q) {{\n    $token = $q["token"] ?? "";\n    $sql = "SELECT id FROM sessions WHERE token='" . $token . "'";\n    $rs = $mysqli->query($sql);\n    return $rs && $rs->num_rows > 0;\n}}\n?>'''
 
-    ("javascript", "second_order_cached_fragment",
-     'async function render(reportId, tenantId) {\n    const r = await db.query("SELECT cached_where FROM cache WHERE id = ? AND t = ?", [reportId, tenantId]);\n    const cachedWhere = r[0].cached_where;\n    const sql = "SELECT id FROM invoices WHERE t = " + tenantId + " AND " + cachedWhere;\n    await db.query(sql);\n}'),
-    ("javascript", "second_order_username_reuse",
-     'async function showProfile(userId) {\n    const r = await db.query("SELECT username FROM users WHERE id = ?", [userId]);\n    const name = r[0].username;\n    return db.query(`SELECT * FROM activity WHERE actor = \'${name}\'`);\n}'),
 
-    ("php", "second_order_cached_fragment",
-     'function render($pdo, $reportId, $tenantId) {\n    $stmt = $pdo->prepare("SELECT cached_where FROM cache WHERE id = ?");\n    $stmt->execute([$reportId]);\n    $cw = $stmt->fetchColumn();\n    $sql = "SELECT id FROM invoices WHERE t = " . $tenantId . " AND " . $cw;\n    $pdo->query($sql);\n}'),
+def generic_second(lang: str, r: random.Random) -> str:
+    if lang == "python":
+        return f'''\ndef run_{ident(r, 'fn')}(request, conn):\n    row = conn.execute("SELECT where_clause FROM reports WHERE id=?", (request.GET.get("id"),)).fetchone()\n    where = row[0]\n    sql = "SELECT * FROM audit_log WHERE " + where\n    return conn.execute(sql).fetchall()\n'''
+    if lang == "javascript":
+        return f'''\nasync function run_{ident(r, 'fn')}(req, db) {{\n  const row = await db.get("SELECT where_clause FROM reports WHERE id=?", [req.params.id]);\n  const sql = "SELECT * FROM audit_log WHERE " + row.where_clause;\n  return db.all(sql);\n}}\n'''
+    if lang == "java":
+        cls = ident(r, "Audit").replace("_", "")
+        return f'''\nclass {cls} {{\n  ResultSet run(Connection c, Statement st, String id) throws Exception {{\n    PreparedStatement ps = c.prepareStatement("SELECT where_clause FROM reports WHERE id=?");\n    ps.setString(1, id);\n    ResultSet rs = ps.executeQuery(); rs.next();\n    String where = rs.getString("where_clause");\n    return st.executeQuery("SELECT * FROM audit_log WHERE " + where);\n  }}\n}}\n'''
+    return f'''<?php\nfunction run_{ident(r, 'fn')}($pdo, $id) {{\n    $stmt = $pdo->prepare("SELECT where_clause FROM reports WHERE id=?");\n    $stmt->execute([$id]);\n    $row = $stmt->fetch(PDO::FETCH_ASSOC);\n    $sql = "SELECT * FROM audit_log WHERE " . $row["where_clause"];\n    return $pdo->query($sql)->fetchAll();\n}}\n?>'''
 
-    ("java", "second_order_cached_fragment",
-     'public void render(int reportId) throws SQLException {\n    PreparedStatement ps = conn.prepareStatement("SELECT cached_where FROM cache WHERE id = ?");\n    ps.setInt(1, reportId);\n    ResultSet rs = ps.executeQuery();\n    rs.next();\n    String cw = rs.getString(1);\n    String sql = "SELECT id FROM invoices WHERE " + cw;\n    stmt.executeQuery(sql);\n}'),
-]
+
+
+
+# Extra V9 vulnerable-flow families.
+# These are intentionally close to SAFE-looking code, but the unsafe value is the
+# one that actually reaches SQL syntax/sink. This teaches FLOW rather than
+# memorising file names.
+def py_vuln_alias_execute(r):
+    return f'''
+def run_{ident(r, 'fn')}(request, conn):
+    email = request.GET.get("email", "")
+    sql = "SELECT id,email FROM users WHERE email='" + email + "'"
+    execute_sql = conn.execute
+    return execute_sql(sql).fetchall()
+'''
+
+
+def py_vuln_multi_query_one_unsafe(r):
+    return f'''
+def report_{ident(r, 'fn')}(request, conn):
+    safe_sql = "SELECT id FROM tenants WHERE id = ?"
+    conn.execute(safe_sql, (request.user.tenant_id,)).fetchone()
+    raw_status = request.GET.get("status", "")
+    unsafe_sql = "SELECT id,email FROM users WHERE status='" + raw_status + "'"
+    return conn.execute(unsafe_sql).fetchall()
+'''
+
+
+def py_vuln_raw_table(r):
+    return f'''
+def table_{ident(r, 'fn')}(request, conn):
+    allowed = {{"users": "users", "orders": "orders"}}
+    decoy_table = allowed.get(request.GET.get("entity"), "users")
+    raw_table = request.GET.get("entity", "")
+    sql = "SELECT id FROM " + raw_table + " WHERE tenant_id = ?"
+    return conn.execute(sql, (request.user.tenant_id,)).fetchall()
+'''
+
+
+def py_vuln_raw_limit(r):
+    return f'''
+def page_{ident(r, 'fn')}(request, conn):
+    safe_limit = min(max(int(request.GET.get("limit", 25)), 1), 100)
+    raw_offset = request.GET.get("offset", "")
+    sql = "SELECT id FROM orders LIMIT " + str(safe_limit) + " OFFSET " + raw_offset
+    return conn.execute(sql).fetchall()
+'''
+
+
+def py_vuln_joined_ids(r):
+    return f'''
+def bulk_{ident(r, 'fn')}(request, conn):
+    ids = request.GET.getlist("id")
+    raw_ids = ",".join(ids)
+    sql = "SELECT * FROM users WHERE id IN (" + raw_ids + ")"
+    return conn.execute(sql).fetchall()
+'''
+
+
+def js_vuln_exec_alias(r):
+    return f'''
+async function run_{ident(r, 'fn')}(req, db) {{
+  const email = req.query.email || "";
+  const sql = `SELECT id,email FROM users WHERE email='${{email}}'`;
+  const run = db.all.bind(db);
+  return run(sql);
+}}
+'''
+
+
+def js_vuln_multi_query_one_unsafe(r):
+    return f'''
+async function report_{ident(r, 'fn')}(req, db) {{
+  await db.get("SELECT id FROM tenants WHERE id=?", [req.user.tenantId]);
+  const status = req.query.status || "";
+  const unsafeSql = `SELECT id,email FROM users WHERE status='${{status}}'`;
+  return db.all(unsafeSql);
+}}
+'''
+
+
+def js_vuln_raw_order_despite_set(r):
+    return f'''
+async function list_{ident(r, 'fn')}(req, db) {{
+  const allowed = new Set(["created_at", "email", "name"]);
+  const safeSort = allowed.has(req.query.sort) ? req.query.sort : "created_at";
+  const rawSort = req.query.sort || "";
+  const sql = `SELECT id,email FROM users ORDER BY ${{rawSort}}`;
+  return db.all(sql);
+}}
+'''
+
+
+def js_vuln_joined_ids(r):
+    return f'''
+async function bulk_{ident(r, 'fn')}(req, db) {{
+  const ids = String(req.query.ids || "").split(",");
+  const rawIds = ids.join(",");
+  const sql = "SELECT * FROM users WHERE id IN (" + rawIds + ")";
+  return db.all(sql);
+}}
+'''
+
+
+def java_vuln_raw_order_decoy_prepared(r):
+    cls = ident(r, "Bad").replace("_", "")
+    return f'''
+class {cls} {{
+  ResultSet list(HttpServletRequest req, Connection c, Statement st) throws Exception {{
+    PreparedStatement safe = c.prepareStatement("SELECT id FROM tenants WHERE id=?");
+    safe.setString(1, req.getUserPrincipal().getName());
+    java.util.Set<String> allowed = java.util.Set.of("created_at", "email", "name");
+    String safeSort = allowed.contains(req.getParameter("sort")) ? req.getParameter("sort") : "created_at";
+    String rawSort = req.getParameter("sort");
+    String sql = "SELECT id,email FROM users ORDER BY " + rawSort;
+    return st.executeQuery(sql);
+  }}
+}}
+'''
+
+
+def java_vuln_multi_query_one_unsafe(r):
+    cls = ident(r, "Svc").replace("_", "")
+    return f'''
+class {cls} {{
+  ResultSet report(HttpServletRequest req, Connection c, Statement st) throws Exception {{
+    PreparedStatement ps = c.prepareStatement("SELECT id FROM tenants WHERE id=?");
+    ps.setString(1, req.getUserPrincipal().getName());
+    ps.executeQuery();
+    String status = req.getParameter("status");
+    String sql = "SELECT id,email FROM users WHERE status='" + status + "'";
+    return st.executeQuery(sql);
+  }}
+}}
+'''
+
+
+def php_vuln_mysqli_concat(r):
+    return f'''<?php
+function search_{ident(r, 'fn')}($mysqli, $q) {{
+    $email = $q["email"] ?? "";
+    $sql = "SELECT id,email FROM users WHERE email='" . $email . "'";
+    return $mysqli->query($sql);
+}}
+?>'''
+
+
+def php_vuln_raw_ids_implode(r):
+    return f'''<?php
+function bulk_{ident(r, 'fn')}($pdo, $q) {{
+    $ids = $q["ids"] ?? [];
+    $raw = implode(',', $ids);
+    $sql = "SELECT * FROM users WHERE id IN (" . $raw . ")";
+    return $pdo->query($sql)->fetchAll();
+}}
+?>'''
+
+
+def php_vuln_pdo_raw_order_decoy(r):
+    return f'''<?php
+function list_{ident(r, 'fn')}($pdo, $q) {{
+    $safe = $pdo->prepare("SELECT id FROM tenants WHERE id=?");
+    $safe->execute([$q["tenant"]]);
+    $allowed = ["name" => "name", "created" => "created_at"];
+    $safeSort = $allowed[$q["sort"] ?? "created"] ?? "created_at";
+    $rawSort = $q["sort"] ?? "";
+    $sql = "SELECT id,email FROM users ORDER BY " . $rawSort;
+    return $pdo->query($sql)->fetchAll();
+}}
+?>'''
+
+
+def php_vuln_query_after_prepare(r):
+    return f'''<?php
+function load_{ident(r, 'fn')}($pdo, $q) {{
+    $stmt = $pdo->prepare("SELECT id FROM tenants WHERE id=?");
+    $stmt->execute([$q["tenant"]]);
+    $status = $q["status"] ?? "";
+    $sql = "SELECT id,email FROM users WHERE status='" . $status . "'";
+    return $pdo->query($sql)->fetchAll();
+}}
+?>'''
+
+
+def py_second_stored_filter_typed(r):
+    return f'''
+def run_{ident(r, 'fn')}(request, conn):
+    saved = conn.execute("SELECT filter_sql FROM saved_filters WHERE id=?", (request.GET.get("id"),)).fetchone()
+    fragment = saved[0]
+    sql = "SELECT * FROM reports WHERE " + fragment
+    return conn.execute(sql).fetchall()
+'''
+
+
+def js_second_cached_fragment_typed(r):
+    return f'''
+async function run_{ident(r, 'fn')}(req, db, cache) {{
+  const cached = await cache.get("segment:" + req.params.id);
+  const whereClause = cached.whereClause;
+  const sql = "SELECT * FROM users WHERE " + whereClause;
+  return db.all(sql);
+}}
+'''
+
+
+def java_second_config_where_typed(r):
+    cls = ident(r, "Audit").replace("_", "")
+    return f'''
+class {cls} {{
+  ResultSet run(Connection c, Statement st, String key) throws Exception {{
+    PreparedStatement ps = c.prepareStatement("SELECT config_value FROM app_config WHERE config_key=?");
+    ps.setString(1, key);
+    ResultSet rs = ps.executeQuery(); rs.next();
+    String where = rs.getString("config_value");
+    String sql = "SELECT * FROM audit_log WHERE " + where;
+    return st.executeQuery(sql);
+  }}
+}}
+'''
+
+
+def php_second_stored_sql_typed(r):
+    return f'''<?php
+function run_{ident(r, 'fn')}($pdo, $id) {{
+    $stmt = $pdo->prepare("SELECT report_filter FROM saved_reports WHERE id=?");
+    $stmt->execute([$id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $where = $row["report_filter"];
+    $sql = "SELECT * FROM audit_log WHERE " . $where;
+    return $pdo->query($sql)->fetchAll();
+}}
+?>'''
 
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Structural augmentation — language-aware transforms
-# ─────────────────────────────────────────────────────────────────────────────
-# Each transform takes a code snippet and returns a new snippet whose
-# normalized token sequence is genuinely different from the original.
-# The transforms are SAFETY-NEUTRAL: they never turn vulnerable code safe
-# or vice versa — they only add structural context (function wrappers,
-# error handling, validation that does not relate to the SQL injection
-# itself, intermediate variables, follow-up logging).
+# V18 adversarial families: time-based BLIND SQLi and PHP callable DB aliases.
+# These are generated variants, not copied benchmark files. They teach the model
+# that a delay expression in executed raw SQL is BLIND, not IN_BAND, and that a
+# callable alias to query/exec remains a SQL sink.
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _indent(code: str, prefix: str = "    ") -> str:
-    return "\n".join(prefix + line for line in code.split("\n"))
+def py_blind_time_sleep(r):
+    delay_fn = r.choice(["SLEEP", "pg_sleep"])
+    return f'''
+def audit_{ident(r, 'fn')}(request, conn):
+    user_id = request.GET.get("uid", "")
+    sql = "SELECT id FROM users WHERE id='" + user_id + "' AND CASE WHEN 1=1 THEN {delay_fn}(5) ELSE 0 END"
+    conn.execute(sql).fetchone()
+    return {{"ok": True}}
+'''
 
 
-# ── Python transforms ────────────────────────────────────────────────────────
-
-def _py_identity(c):       return c
-def _py_wrap_function(c):  return f"def handle(request):\n{_indent(c)}"
-def _py_try_except(c):     return f"try:\n{_indent(c)}\nexcept Exception as err:\n    pass"
-def _py_validate_pre(c):   return f"if request is None:\n    return None\n{c}"
-def _py_extra_var(c):      return f"_ctx = get_context()\n{c}"
-def _py_log_post(c):       return f"{c}\nlogger.info(\"done\")"
-def _py_return_result(c):  return f"{c}\nreturn result"
-def _py_extra_select(c):   return f"_meta = db.execute(\"SELECT 1\")\n{c}"
+def py_blind_time_if_sleep(r):
+    return f'''
+def probe_{ident(r, 'fn')}(request, conn):
+    name = request.GET.get("name", "")
+    sql = "SELECT * FROM accounts WHERE name='" + name + "' OR IF(LENGTH(database())>0,SLEEP(4),0)"
+    row = conn.execute(sql).fetchone()
+    return row is not None
+'''
 
 
-# ── JavaScript transforms ────────────────────────────────────────────────────
-
-def _js_identity(c):       return c
-def _js_wrap_function(c):  return f"function handle(req, res) {{\n{_indent(c)}\n}}"
-def _js_try_catch(c):      return f"try {{\n{_indent(c)}\n}} catch (err) {{\n  console.error(err);\n}}"
-def _js_validate_pre(c):   return f"if (!req) {{\n  return;\n}}\n{c}"
-def _js_extra_var(c):      return f"const _ctx = getContext();\n{c}"
-def _js_log_post(c):       return f"{c}\nconsole.log(\"done\");"
-def _js_arrow_wrap(c):     return f"const handle = async (req, res) => {{\n{_indent(c)}\n}};"
-def _js_extra_select(c):   return f"const _meta = await db.query(\"SELECT 1\");\n{c}"
-
-
-# ── PHP transforms ───────────────────────────────────────────────────────────
-
-def _php_identity(c):      return c
-def _php_wrap_function(c): return f"function handle($request) {{\n{_indent(c)}\n}}"
-def _php_try_catch(c):     return f"try {{\n{_indent(c)}\n}} catch (Exception $err) {{\n  error_log($err);\n}}"
-def _php_validate_pre(c):  return f"if (!isset($_GET) && !isset($_POST)) {{\n  return;\n}}\n{c}"
-def _php_extra_var(c):     return f"$ctx = get_context();\n{c}"
-def _php_log_post(c):      return f"{c}\nerror_log(\"done\");"
-def _php_isset_check(c):   return f"if (!isset($_GET[\"x\"])) {{\n  $_GET[\"x\"] = \"\";\n}}\n{c}"
-def _php_extra_select(c):  return f"$meta = mysql_query(\"SELECT 1\");\n{c}"
+def js_blind_time_sleep(r):
+    fn = r.choice(["SLEEP", "pg_sleep", "BENCHMARK"])
+    expr = "BENCHMARK(2500000,MD5('x'))" if fn == "BENCHMARK" else f"{fn}(5)"
+    return f'''
+async function audit_{ident(r, 'fn')}(req, db) {{
+  const userId = req.query.uid || "";
+  const sql = `SELECT id FROM users WHERE id='${{userId}}' AND CASE WHEN 1=1 THEN {expr} ELSE 0 END`;
+  await db.get(sql);
+  return true;
+}}
+'''
 
 
-# ── Java transforms ──────────────────────────────────────────────────────────
+def js_blind_time_if_sleep(r):
+    return f'''
+async function probe_{ident(r, 'fn')}(req, db) {{
+  const email = req.query.email || "";
+  const sql = "SELECT id FROM users WHERE email='" + email + "' OR IF(1=1,SLEEP(3),0)";
+  const row = await db.get(sql);
+  return !!row;
+}}
+'''
 
-def _java_identity(c):     return c
-def _java_wrap_method(c):  return f"public void handle(HttpServletRequest request) throws Exception {{\n{_indent(c)}\n}}"
-def _java_try_catch(c):    return f"try {{\n{_indent(c)}\n}} catch (Exception err) {{\n  err.printStackTrace();\n}}"
-def _java_validate_pre(c): return f"if (request == null) {{\n  return;\n}}\n{c}"
-def _java_extra_var(c):    return f"Object ctx = getContext();\n{c}"
-def _java_log_post(c):     return f"{c}\nlogger.info(\"done\");"
-def _java_extra_select(c): return f"Statement meta = conn.createStatement();\nmeta.executeQuery(\"SELECT 1\");\n{c}"
-def _java_string_var(c):   return f"String prefix = \"v1\";\n{c}"
+
+def java_blind_time_waitfor(r):
+    cls = ident(r, "TimeProbe").replace("_", "")
+    return f'''
+class {cls} {{
+  boolean audit(HttpServletRequest req, Statement st) throws Exception {{
+    String uid = req.getParameter("uid");
+    String sql = "SELECT id FROM users WHERE id='" + uid + "'; WAITFOR DELAY '00:00:05'";
+    st.executeQuery(sql);
+    return true;
+  }}
+}}
+'''
 
 
-TRANSFORMS_BY_LANGUAGE: dict[str, list] = {
-    "python":     [_py_identity, _py_wrap_function, _py_try_except, _py_validate_pre,
-                   _py_extra_var, _py_log_post, _py_return_result, _py_extra_select],
-    "javascript": [_js_identity, _js_wrap_function, _js_try_catch, _js_validate_pre,
-                   _js_extra_var, _js_log_post, _js_arrow_wrap, _js_extra_select],
-    "php":        [_php_identity, _php_wrap_function, _php_try_catch, _php_validate_pre,
-                   _php_extra_var, _php_log_post, _php_isset_check, _php_extra_select],
-    "java":       [_java_identity, _java_wrap_method, _java_try_catch, _java_validate_pre,
-                   _java_extra_var, _java_log_post, _java_extra_select, _java_string_var],
+def java_blind_time_sleep(r):
+    cls = ident(r, "DelayProbe").replace("_", "")
+    return f'''
+class {cls} {{
+  boolean probe(HttpServletRequest req, Statement st) throws Exception {{
+    String name = req.getParameter("name");
+    String sql = "SELECT id FROM accounts WHERE name='" + name + "' OR CASE WHEN 1=1 THEN SLEEP(4) ELSE 0 END";
+    ResultSet rs = st.executeQuery(sql);
+    return rs.next();
+  }}
+}}
+'''
+
+
+def php_blind_time_sleep(r):
+    return f'''<?php
+function audit_{ident(r, 'fn')}($mysqli, $q) {{
+    $uid = $q["uid"] ?? "";
+    $sql = "SELECT id FROM users WHERE id='" . $uid . "' OR IF(1=1,SLEEP(5),0)";
+    $mysqli->query($sql);
+    return true;
+}}
+?>'''
+
+
+def php_blind_time_benchmark(r):
+    return f'''<?php
+function probe_{ident(r, 'fn')}($pdo, $q) {{
+    $email = $q["email"] ?? "";
+    $sql = "SELECT id FROM users WHERE email='" . $email . "' OR BENCHMARK(2000000,MD5('x'))";
+    $row = $pdo->query($sql)->fetch(PDO::FETCH_ASSOC);
+    return $row !== false;
+}}
+?>'''
+
+
+def php_vuln_callable_query_alias(r):
+    return f'''<?php
+function load_{ident(r, 'fn')}($pdo, $q) {{
+    $status = $q["status"] ?? "";
+    $sql = "SELECT id,email FROM users WHERE status='" . $status . "'";
+    $runner = [$pdo, "query"];
+    $stmt = $runner($sql);
+    return $stmt->fetchAll();
+}}
+?>'''
+
+
+def php_vuln_callable_this_pdo_query_alias(r):
+    cls = ident(r, "Repo").replace("_", "")
+    return f'''<?php
+class {cls} {{
+    private $pdo;
+    public function find($q) {{
+        $raw = $q["sort"] ?? "";
+        $sql = "SELECT id,email FROM users ORDER BY " . $raw;
+        $runner = [$this->pdo, "query"];
+        return $runner($sql)->fetchAll();
+    }}
+}}
+?>'''
+
+
+def php_vuln_callable_mysqli_query_alias(r):
+    return f'''<?php
+function search_{ident(r, 'fn')}($mysqli, $q) {{
+    $name = $q["name"] ?? "";
+    $sql = "SELECT id FROM customers WHERE name='" . $name . "'";
+    $run = [$mysqli, "query"];
+    return $run($sql);
+}}
+?>'''
+
+
+def php_safe_callable_non_db_alias(r):
+    return f'''<?php
+function render_{ident(r, 'fn')}($q) {{
+    $value = $q["name"] ?? "";
+    $runner = ["Html", "escape"];
+    $safe = $runner($value);
+    return "<span>" . $safe . "</span>";
+}}
+?>'''
+
+
+def php_safe_callable_prepare_execute(r):
+    return f'''<?php
+function safe_{ident(r, 'fn')}($pdo, $q) {{
+    $email = $q["email"] ?? "";
+    $runner = [$pdo, "prepare"];
+    $stmt = $runner("SELECT id,email FROM users WHERE email = ?");
+    $stmt->execute([$email]);
+    return $stmt->fetchAll();
+}}
+?>'''
+
+
+
+# Extra V18 time-delay BLIND variants. These use different syntax forms so the
+# model learns the semantic FLOW: raw input reaches SQL syntax whose outcome is
+# timing/boolean delay, therefore BLIND even when no rows are displayed.
+def py_blind_time_or_sleep_raw(r):
+    return f'''
+def delay_{ident(r, 'fn')}(request, conn):
+    email = request.GET.get("email", "")
+    sql = "SELECT id FROM users WHERE email='" + email + "' OR SLEEP(3)"
+    conn.execute(sql).fetchone()
+    return {{"queued": True}}
+'''
+
+
+def py_blind_time_select_pg_sleep(r):
+    return f'''
+def probe_{ident(r, 'fn')}(request, conn):
+    raw = request.GET.get("flag", "")
+    sql = "SELECT id FROM flags WHERE value='" + raw + "' AND (SELECT pg_sleep(2)) IS NULL"
+    conn.execute(sql)
+    return True
+'''
+
+
+def js_blind_time_benchmark_concat(r):
+    return f'''
+async function delay_{ident(r, 'fn')}(req, db) {{
+  const raw = req.query.name || "";
+  const sql = "SELECT id FROM users WHERE name='" + raw + "' OR BENCHMARK(1500000,MD5('x'))";
+  await db.get(sql);
+  return {{ ok: true }};
+}}
+'''
+
+
+def js_blind_time_waitfor_template(r):
+    return f'''
+async function audit_{ident(r, 'fn')}(req, db) {{
+  const raw = req.query.uid || "";
+  const sql = `SELECT id FROM users WHERE id='${{raw}}'; WAITFOR DELAY '00:00:04'`;
+  await db.exec(sql);
+  return true;
+}}
+'''
+
+
+def java_blind_time_dbms_sleep(r):
+    cls = ident(r, "OracleProbe").replace("_", "")
+    return f'''
+class {cls} {{
+  boolean run(HttpServletRequest req, Statement st) throws Exception {{
+    String raw = req.getParameter("account");
+    String sql = "SELECT id FROM accounts WHERE name='" + raw + "' OR DBMS_LOCK.SLEEP(3)=0";
+    st.execute(sql);
+    return true;
+  }}
+}}
+'''
+
+
+def java_blind_time_if_sleep(r):
+    cls = ident(r, "IfDelay").replace("_", "")
+    return f'''
+class {cls} {{
+  boolean run(HttpServletRequest req, Statement st) throws Exception {{
+    String raw = req.getParameter("email");
+    String sql = "SELECT id FROM users WHERE email='" + raw + "' OR IF(1=1,SLEEP(5),0)";
+    st.executeQuery(sql);
+    return true;
+  }}
+}}
+'''
+
+
+def php_blind_time_pg_sleep(r):
+    return f'''<?php
+function delay_{ident(r, 'fn')}($pdo, $q) {{
+    $raw = $q["uid"] ?? "";
+    $sql = "SELECT id FROM users WHERE id='" . $raw . "' OR pg_sleep(4) IS NULL";
+    $pdo->query($sql);
+    return true;
+}}
+?>'''
+
+
+def php_blind_time_case_sleep(r):
+    return f'''<?php
+function audit_{ident(r, 'fn')}($mysqli, $q) {{
+    $raw = $q["email"] ?? "";
+    $sql = "SELECT id FROM users WHERE email='" . $raw . "' OR CASE WHEN 1=1 THEN SLEEP(5) ELSE 0 END";
+    $mysqli->query($sql);
+    return true;
+}}
+?>'''
+
+
+# Extra V18 callable alias variants and hard counterexamples.
+def php_vuln_callable_method_var_query_alias(r):
+    return f'''<?php
+function find_{ident(r, 'fn')}($pdo, $q) {{
+    $term = $q["term"] ?? "";
+    $sql = "SELECT id FROM customers WHERE name='" . $term . "'";
+    $method = "query";
+    $runner = [$pdo, $method];
+    return $runner($sql)->fetchAll();
+}}
+?>'''
+
+
+def php_vuln_callable_db_property_query_alias(r):
+    cls = ident(r, "Storage").replace("_", "")
+    return f'''<?php
+class {cls} {{
+    public $db;
+    public function list($q) {{
+        $raw = $q["filter"] ?? "";
+        $sql = "SELECT * FROM audit_log WHERE " . $raw;
+        $run = [$this->db, "query"];
+        return $run($sql);
+    }}
+}}
+?>'''
+
+
+def php_safe_callable_query_literal(r):
+    return f'''<?php
+function safe_{ident(r, 'fn')}($pdo) {{
+    $sql = "SELECT id,email FROM users WHERE active = 1";
+    $runner = [$pdo, "query"];
+    return $runner($sql)->fetchAll();
+}}
+?>'''
+
+
+def php_safe_callable_prepared_alias_with_raw_decoy(r):
+    return f'''<?php
+function safe_{ident(r, 'fn')}($pdo, $q) {{
+    $raw = $q["email"] ?? "";
+    $sql = "SELECT id,email FROM users WHERE email = ?";
+    $runner = [$pdo, "prepare"];
+    $stmt = $runner($sql);
+    $stmt->execute([$raw]);
+    return $stmt->fetchAll();
+}}
+?>'''
+
+
+
+# V18 hard-SAFE no-sink/comment/string-only families.
+# These teach the model that SQL-looking payloads, SLEEP/WAITFOR tokens,
+# SELECT/UNION strings and DB method names are not vulnerabilities unless the
+# SQL-like value reaches a real DB execution sink.
+def py_safe_comments_only_hard(r):
+    payload = r.choice(["SLEEP(5)", "UNION SELECT password FROM users", "WAITFOR DELAY '00:00:05'", "pg_sleep(3)"])
+    fname = ident(r, 'fn')
+    return f"""
+# Historical attack example for documentation only: {payload}
+# Do not execute this string; it is here so reviewers know what we block.
+def docs_{fname}(request):
+    example = "SELECT * FROM users WHERE name='admin' OR {payload}"
+    note = "training/documentation string only, no database sink"
+    return {{"example": example, "note": note}}
+"""
+
+
+def js_safe_comments_only_hard(r):
+    payload = r.choice(["SLEEP(5)", "BENCHMARK(1000000,MD5('x'))", "WAITFOR DELAY '00:00:05'", "UNION SELECT password FROM users"])
+    fname = ident(r, 'fn')
+    return f"""
+// Security note only: {payload}
+export function describe_{fname}(req) {{
+  const sample = `SELECT * FROM users WHERE id='${{req.query.id}}' OR {payload}`;
+  const logOnly = "This is a documentation string and is never passed to db.query/db.get/db.all";
+  return {{ sample, logOnly }};
+}}
+"""
+
+
+def java_safe_comments_only_hard(r):
+    payload = r.choice(["SLEEP(5)", "DBMS_LOCK.SLEEP(3)", "WAITFOR DELAY '00:00:05'", "UNION SELECT password FROM users"])
+    cls = ident(r, "Docs").replace("_", "")
+    return f"""
+class {cls} {{
+  // Documentation-only SQLi example: {payload}
+  String describe(HttpServletRequest req) {{
+    String example = "SELECT * FROM users WHERE email='" + req.getParameter("email") + "' OR {payload}";
+    String notExecuted = "No Statement, no PreparedStatement execution, no DB sink";
+    return example + notExecuted;
+  }}
+}}
+"""
+
+
+def php_safe_comments_only_hard(r):
+    payload = r.choice(["SLEEP(5)", "BENCHMARK(1000000,MD5('x'))", "WAITFOR DELAY '00:00:05'", "UNION SELECT password FROM users"])
+    fname = ident(r, 'fn')
+    return f"""<?php
+// Documentation-only attack sample: {payload}
+function describe_{fname}($request) {{
+    $example = "SELECT * FROM users WHERE id='" . ($request["id"] ?? "") . "' OR {payload}";
+    $note = "No PDO::query, no mysqli_query, no execute sink; string only";
+    return [$example, $note];
+}}
+?>"""
+
+
+def py_safe_time_keyword_not_sql(r):
+    fname = ident(r, 'fn')
+    return f"""
+def wait_{fname}(request):
+    delay = int(request.GET.get("delay", 1))
+    # Python sleep is application timing, not SQL SLEEP inside a database query.
+    time.sleep(min(max(delay, 0), 2))
+    return {{"ok": True}}
+"""
+
+
+def js_safe_time_keyword_not_sql(r):
+    fname = ident(r, 'fn')
+    return f"""
+export async function delay_{fname}(req) {{
+  const ms = Math.min(Number(req.query.ms || 10), 1000);
+  await new Promise(resolve => setTimeout(resolve, ms));
+  return {{ ok: true }};
+}}
+"""
+
+
+def java_safe_time_keyword_not_sql(r):
+    cls = ident(r, "Timer").replace("_", "")
+    return f"""
+class {cls} {{
+  boolean wait(HttpServletRequest req) throws Exception {{
+    int ms = Math.min(Integer.parseInt(req.getParameter("ms")), 1000);
+    Thread.sleep(ms);
+    return true;
+  }}
+}}
+"""
+
+
+def php_safe_time_keyword_not_sql(r):
+    fname = ident(r, 'fn')
+    return f"""<?php
+function wait_{fname}($request) {{
+    $n = min((int)($request["n"] ?? 1), 2);
+    sleep($n); // PHP sleep, not SQL SLEEP in a query string
+    return true;
+}}
+?>"""
+
+
+# -----------------------------
+# V18 focused generalization families
+# -----------------------------
+# Generated families only: no benchmark source is copied. They target V18 gaps:
+# Python no-sink SQL-looking strings/comments, Java safe named params, and PHP
+# time-delay BLIND flows.
+
+def py_safe_docstring_payload_no_sink(r):
+    payload = r.choice(["SLEEP(5)", "pg_sleep(3)", "WAITFOR DELAY '00:00:05'", "BENCHMARK(1000000,MD5('x'))", "UNION SELECT password FROM users"])
+    fname = ident(r, 'fn')
+    return f'''
+def describe_{fname}(request):
+    # Documentation-only SQLi payload example: {payload}
+    sample = "SELECT * FROM accounts WHERE id='" + str(request.GET.get("id", "")) + "' OR {payload}"
+    rendered = {{"sample": sample, "purpose": "docs only", "sink": "none"}}
+    return rendered
+'''
+
+
+def py_safe_payload_constant_log_only(r):
+    payload = r.choice(["SLEEP(4)", "pg_sleep(2)", "IF(1=1,SLEEP(5),0)", "CASE WHEN 1=1 THEN SLEEP(5) ELSE 0 END"])
+    fname = ident(r, 'fn')
+    return f'''
+def log_{fname}(request, logger):
+    attack_example = "SELECT id FROM users WHERE name='x' OR {payload}"
+    user_supplied_note = request.GET.get("note", "")
+    logger.info("example=%s note=%s", attack_example, user_supplied_note)
+    return {{"ok": True, "example": attack_example}}
+'''
+
+
+def java_safe_named_jdbc_params_more(r):
+    cls = ident(r, "NamedRepo").replace("_", "")
+    return f'''
+import org.springframework.jdbc.core.namedparam.*;
+import java.util.*;
+class {cls} {{
+  List<?> search(HttpServletRequest req, NamedParameterJdbcTemplate jdbc) {{
+    String sql = "SELECT id,email FROM users WHERE tenant_id = :tenant AND status = :status AND email LIKE :email";
+    MapSqlParameterSource params = new MapSqlParameterSource();
+    params.addValue("tenant", req.getUserPrincipal().getName());
+    params.addValue("status", req.getParameter("status"));
+    params.addValue("email", "%" + req.getParameter("email") + "%");
+    String decoy = "SELECT * FROM users WHERE email='" + req.getParameter("email") + "'";
+    return jdbc.query(sql, params, mapper);
+  }}
+}}
+'''
+
+
+def java_safe_jpa_named_params_more(r):
+    cls = ident(r, "JpaRepo").replace("_", "")
+    return f'''
+import javax.persistence.*;
+class {cls} {{
+  java.util.List<?> list(HttpServletRequest req, EntityManager em) {{
+    Query query = em.createNativeQuery("SELECT id,email FROM users WHERE tenant_id = :tenant AND email = :email");
+    query.setParameter("tenant", req.getUserPrincipal().getName());
+    query.setParameter("email", req.getParameter("email"));
+    String unsafeLooking = "SELECT * FROM users WHERE email='" + req.getParameter("email") + "'";
+    return query.getResultList();
+  }}
+}}
+'''
+
+
+def php_blind_time_raw_mysqli_variants(r):
+    fname = ident(r, 'fn')
+    expr = r.choice(["IF(1=1,SLEEP(5),0)", "CASE WHEN 1=1 THEN SLEEP(4) ELSE 0 END", "BENCHMARK(1800000,MD5('x'))"])
+    return f'''<?php
+function probe_{fname}($mysqli, $request) {{
+    $uid = $request["uid"] ?? "";
+    $sql = "SELECT id FROM sessions WHERE user_id='" . $uid . "' OR {expr}";
+    $res = $mysqli->query($sql);
+    return $res !== false;
+}}
+?>'''
+
+
+def php_blind_time_raw_pdo_variants(r):
+    fname = ident(r, 'fn')
+    expr = r.choice(["SLEEP(5)", "pg_sleep(3)", "IF(LENGTH(database())>0,SLEEP(4),0)", "CASE WHEN 1=1 THEN SLEEP(4) ELSE 0 END"])
+    return f'''<?php
+function audit_{fname}($pdo, $q) {{
+    $email = $q["email"] ?? "";
+    $sql = "SELECT id FROM users WHERE email='" . $email . "' OR {expr}";
+    $row = $pdo->query($sql)->fetch(PDO::FETCH_ASSOC);
+    return $row !== false;
+}}
+?>'''
+
+
+def php_blind_time_callable_alias_variants(r):
+    fname = ident(r, 'fn')
+    return f'''<?php
+function delay_{fname}($pdo, $q) {{
+    $name = $q["name"] ?? "";
+    $sql = "SELECT id FROM users WHERE name='" . $name . "' OR IF(1=1,SLEEP(5),0)";
+    $runner = [$pdo, "query"];
+    $stmt = $runner($sql);
+    return $stmt !== false;
+}}
+?>'''
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# V18 focused flow families.
+# Goal: fix attack-type overconfidence without adding runtime rules.
+# These generated variants teach the model the semantic difference between:
+# - direct raw SQL reaching a sink => IN_BAND
+# - boolean/time/security decision from unsafe SQL => BLIND
+# - stored/config/cache/db-loaded SQL fragment later used as syntax => SECOND_ORDER
+# ─────────────────────────────────────────────────────────────────────────────
+
+def js_inband_template_direct_not_stored(r):
+    fname = ident(r, "profile")
+    decoy = r.choice(["cacheKey", "savedSegment", "configName"])
+    return f"""
+async function {fname}(req, db) {{
+  const email = req.query.email || "";
+  const {decoy} = "not used as SQL fragment";
+  const sql = `SELECT id,email FROM customers WHERE email='${{email}}'`;
+  const row = await db.get(sql);
+  return row;
+}}
+"""
+
+
+def js_blind_count_helper_direct(r):
+    fname = ident(r, "helper")
+    return f"""
+async function {fname}(req, db) {{
+  const feature = req.query.feature || "";
+  const sql = "SELECT COUNT(*) AS c FROM feature_flags WHERE name='" + feature + "'";
+  const row = await db.get(sql);
+  return row && row.c > 0;
+}}
+"""
+
+
+def js_blind_rows_length_direct(r):
+    fname = ident(r, "allow")
+    return f"""
+async function {fname}(req, db) {{
+  const token = req.query.token || "";
+  const sql = `SELECT id FROM sessions WHERE token='${{token}}'`;
+  const rows = await db.all(sql);
+  return rows.length > 0;
+}}
+"""
+
+
+def php_inband_mysqli_customer_concat_direct(r):
+    fname = ident(r, "search")
+    decoy = r.choice(["$cachedFilter", "$configOrder", "$storedNote"])
+    return f"""<?php
+function {fname}($mysqli, $request) {{
+    $name = $request["name"] ?? "";
+    {decoy} = "not a stored SQL fragment";
+    $sql = "SELECT id,name,email FROM customers WHERE name='" . $name . "'";
+    $res = $mysqli->query($sql);
+    return $res->fetch_all(MYSQLI_ASSOC);
+}}
+?>"""
+
+
+def php_inband_implode_ids_direct(r):
+    fname = ident(r, "load")
+    return f"""<?php
+function {fname}($mysqli, $request) {{
+    $ids = $request["ids"] ?? [];
+    $joined = implode(",", $ids);
+    $sql = "SELECT id,total FROM orders WHERE id IN (" . $joined . ")";
+    $res = $mysqli->query($sql);
+    return $res->fetch_all(MYSQLI_ASSOC);
+}}
+?>"""
+
+
+def php_inband_laravel_raw_concat_direct(r):
+    fname = ident(r, "search")
+    return f"""<?php
+function {fname}($request) {{
+    $email = $request["email"] ?? "";
+    $sql = "SELECT id,email FROM users WHERE email='" . $email . "'";
+    return DB::select($sql);
+}}
+?>"""
+
+
+def php_inband_pdo_query_direct_not_second_order(r):
+    fname = ident(r, "find")
+    return f"""<?php
+function {fname}($pdo, $request) {{
+    $status = $request["status"] ?? "";
+    $sql = "SELECT id,email FROM users WHERE status='" . $status . "'";
+    $stmt = $pdo->query($sql);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}}
+?>"""
+
+
+def php_blind_time_raw_more_direct(r):
+    fname = ident(r, "delay")
+    expr = r.choice(["IF(1=1,SLEEP(5),0)", "CASE WHEN 1=1 THEN SLEEP(4) ELSE 0 END", "SLEEP(5)", "BENCHMARK(2000000,MD5('x'))"])
+    return f"""<?php
+function {fname}($pdo, $request) {{
+    $raw = $request["email"] ?? "";
+    $sql = "SELECT id FROM users WHERE email='" . $raw . "' OR {expr}";
+    $stmt = $pdo->query($sql);
+    return $stmt !== false;
+}}
+?>"""
+
+
+def py_safe_comments_only_more_strict(r):
+    payload = r.choice(["SLEEP(5)", "pg_sleep(3)", "WAITFOR DELAY '00:00:05'", "UNION SELECT password FROM users"])
+    fname = ident(r, 'docs')
+    return f"""
+def {fname}(request):
+    # Documentation-only payload example: {payload}. No DB object is accepted here.
+    payload_example = "SELECT * FROM users WHERE id='" + str(request.GET.get("id", "")) + "' OR {payload}"
+    return {{"kind": "documentation", "example": payload_example}}
+"""
+
+
+def java_named_jdbc_params_decoy_more(r):
+    cls = ident(r, "NamedSafe").replace("_", "")
+    return f"""
+import org.springframework.jdbc.core.namedparam.*;
+import java.util.*;
+class {cls} {{
+  List<?> find(HttpServletRequest req, NamedParameterJdbcTemplate jdbc) {{
+    String sql = "SELECT id,email FROM users WHERE tenant=:tenant AND email LIKE :email";
+    Map<String,Object> params = new HashMap<>();
+    params.put("tenant", req.getUserPrincipal().getName());
+    params.put("email", "%" + req.getParameter("email") + "%");
+    String decoy = "SELECT * FROM users WHERE email='" + req.getParameter("email") + "'";
+    return jdbc.query(sql, params, mapper);
+  }}
+}}
+"""
+
+
+
+# V18 extra SAFE Sequelize replacement families.
+# These teach the model that named/array replacements are parameter binding,
+# even when the query contains suspicious-looking SQL keywords in nearby decoys.
+def js_safe_sequelize_replacements_named_v18(r):
+    fname = ident(r, "audit")
+    return f"""
+async function {fname}(req, sequelize, QueryTypes) {{
+  const sql = "SELECT id,email FROM users WHERE tenant_id = :tenant AND email LIKE :email";
+  const suspiciousExample = "SELECT * FROM users WHERE email='" + req.query.email + "'"; // not executed
+  const params = {{
+    tenant: req.user.tenantId,
+    email: `%${{req.query.email || ""}}%`
+  }};
+  return sequelize.query(sql, {{ replacements: params, type: QueryTypes.SELECT }});
+}}
+"""
+
+
+def js_safe_sequelize_replacements_array_v18(r):
+    fname = ident(r, "repo")
+    return f"""
+async function {fname}(req, sequelize) {{
+  const tenant = req.user.tenantId;
+  const status = req.query.status || "ACTIVE";
+  const sql = "SELECT id,email FROM users WHERE tenant_id = ? AND status = ?";
+  const rows = await sequelize.query(sql, {{ replacements: [tenant, status] }});
+  return rows;
+}}
+"""
+
+
+def js_safe_sequelize_bind_v18(r):
+    fname = ident(r, "list")
+    return f"""
+async function {fname}(req, sequelize, QueryTypes) {{
+  const sql = "SELECT id,email FROM users WHERE tenant_id = $tenant AND status = $status";
+  return sequelize.query(sql, {{
+    bind: {{ tenant: req.user.tenantId, status: req.query.status || "ACTIVE" }},
+    type: QueryTypes.SELECT
+  }});
+}}
+"""
+
+
+# V18 extra JavaScript SECOND_ORDER saved/cache/config segment flows.
+# The important signal is not direct request input; it is a previously stored
+# SQL fragment that later becomes SQL syntax.
+def js_second_saved_segment_repo_v18(r):
+    fname = ident(r, "runSegment")
+    return f"""
+async function {fname}(req, db, segmentRepo) {{
+  const savedSegment = await segmentRepo.load(req.params.segmentId);
+  const whereClause = savedSegment.whereClause;
+  const sql = "SELECT id,email FROM users WHERE tenant_id = ? AND " + whereClause;
+  return db.all(sql, [req.user.tenantId]);
+}}
+"""
+
+
+def js_second_db_loaded_segment_v18(r):
+    fname = ident(r, "saved")
+    return f"""
+async function {fname}(req, db) {{
+  const row = await db.get("SELECT filter_sql FROM saved_segments WHERE id=?", [req.params.id]);
+  const filterSql = row.filter_sql;
+  const sql = "SELECT * FROM audit_events WHERE " + filterSql;
+  return db.all(sql);
+}}
+"""
+
+
+def js_second_config_order_v18(r):
+    fname = ident(r, "report")
+    return f"""
+async function {fname}(req, db, config) {{
+  const orderClause = await config.get("reports.orderClause");
+  const sql = "SELECT id,total FROM orders WHERE tenant_id=? ORDER BY " + orderClause;
+  return db.all(sql, [req.user.tenantId]);
+}}
+"""
+
+
+# V18 extra JavaScript SECOND_ORDER saved-segment variants.
+# These teach the model that a value is SECOND_ORDER only when a saved/cache/config/DB
+# fragment becomes SQL syntax later, not when raw request input is directly concatenated.
+def js_second_saved_segment_runner_v18(r):
+    fname = ident(r, "runSavedSegment")
+    return f"""
+async function {fname}(req, db, savedSegments) {{
+  const saved = await savedSegments.loadForUser(req.user.id, req.params.segmentId);
+  const segment = saved.sqlSegment || saved.whereClause;
+  const base = "SELECT id,email,created_at FROM customers WHERE tenant_id = ?";
+  const sql = base + " AND " + segment;
+  return db.all(sql, [req.user.tenantId]);
+}}
+"""
+
+
+def js_second_cached_filter_runner_v18(r):
+    fname = ident(r, "runCachedFilter")
+    return f"""
+async function {fname}(req, db, cache) {{
+  const cacheKey = `segment:${{req.user.tenantId}}:${{req.params.segment}}`;
+  const cached = await cache.get(cacheKey);
+  const whereFragment = cached && cached.filterSql;
+  const query = "SELECT * FROM invoices WHERE tenant_id = ? AND " + whereFragment;
+  return db.query(query, [req.user.tenantId]);
+}}
+"""
+
+
+def js_second_config_segment_runner_v18(r):
+    fname = ident(r, "runConfigSegment")
+    return f"""
+async function {fname}(req, db, settings) {{
+  const configuredClause = await settings.get("security.audit.extraWhere");
+  const sql = "SELECT id,actor,action FROM audit_log WHERE app_id = ? AND " + configuredClause;
+  const rows = await db.all(sql, [req.app.id]);
+  return rows;
+}}
+"""
+
+
+def js_second_db_loaded_where_runner_v18(r):
+    fname = ident(r, "executeSavedSearch")
+    return f"""
+async function {fname}(req, db) {{
+  const saved = await db.get("SELECT where_clause FROM saved_searches WHERE owner_id=? AND id=?", [req.user.id, req.params.id]);
+  const clause = saved.where_clause;
+  const sql = `SELECT id,title FROM tickets WHERE tenant_id = ? AND ${{clause}}`;
+  return db.all(sql, [req.user.tenantId]);
+}}
+"""
+
+
+def js_second_profile_segment_runner_v18(r):
+    fname = ident(r, "runProfileReport")
+    return f"""
+async function {fname}(req, db, profiles) {{
+  const profile = await profiles.find(req.params.profileId);
+  const storedSegment = profile.reportFilterSegment;
+  const sql = "SELECT id,total FROM orders WHERE status = 'OPEN' AND " + storedSegment;
+  return await db.execute(sql);
+}}
+"""
+
+
+# V18 extra JavaScript SECOND_ORDER saved-segment variants.
+# These are intentionally generated variants, not copied benchmark files.
+# Goal: teach that a saved segment/filter loaded from a repo/cache/config/database
+# and later appended into SQL syntax is SECOND_ORDER, even when the final sink
+# uses normal db.all/db.query calls and bound tenant parameters.
+def js_second_saved_segment_runner_v18_route(r):
+    fname = ident(r, "applySavedSegment")
+    repo = r.choice(["segmentStore", "savedSegmentService", "filtersRepo", "savedSegments"])
+    method = r.choice(["loadForUser", "getForTenant", "findSegment", "readSavedSegment"])
+    prop = r.choice(["whereClause", "sqlSegment", "filterSql", "conditionSql"])
+    sink = r.choice(["all", "query", "execute"])
+    table = r.choice(["customers", "tickets", "orders", "audit_events"])
+    return f"""
+async function {fname}(req, db, {repo}) {{
+  const savedSegment = await {repo}.{method}(req.user.id, req.params.segmentId);
+  const savedWhere = savedSegment.{prop};
+  const params = [req.user.tenantId];
+  const baseSql = "SELECT id, name, created_at FROM {table} WHERE tenant_id = ?";
+  const finalSql = baseSql + " AND " + savedWhere;
+  return db.{sink}(finalSql, params);
+}}
+"""
+
+
+def js_second_saved_filter_runner_v18_alias(r):
+    fname = ident(r, "runSavedFilter")
+    loader = r.choice(["loadSavedFilter", "fetchSavedFilter", "getStoredPredicate"])
+    field = r.choice(["predicate", "where", "sql", "fragment"])
+    sink = r.choice(["all", "query", "run"])
+    return f"""
+async function {loader}(db, id) {{
+  return db.get("SELECT where_clause AS predicate, filter_sql AS sql FROM saved_filters WHERE id=?", [id]);
+}}
+
+async function {fname}(req, db) {{
+  const row = await {loader}(db, req.params.filterId);
+  const storedFilter = row.{field} || row.predicate || row.sql;
+  let sql = "SELECT id, email FROM users WHERE active = 1";
+  sql = sql + " AND " + storedFilter;
+  return await db.{sink}(sql);
+}}
+"""
+
+
+def js_second_cached_segment_service_v18(r):
+    fname = ident(r, "executeCachedSegment")
+    cache = r.choice(["redis", "cache", "segmentCache"])
+    sink = r.choice(["all", "query", "execute"])
+    return f"""
+async function {fname}(req, db, {cache}) {{
+  const cacheKey = "saved-segment:" + req.user.tenantId + ":" + req.params.segmentId;
+  const cachedSegment = await {cache}.get(cacheKey);
+  const parsed = typeof cachedSegment === "string" ? JSON.parse(cachedSegment) : cachedSegment;
+  const fragment = parsed.whereClause || parsed.sqlFragment;
+  const sql = "SELECT id,total FROM invoices WHERE tenant_id = ? AND " + fragment;
+  return db.{sink}(sql, [req.user.tenantId]);
+}}
+"""
+
+
+def js_second_saved_segment_runner_v18_decoys(r):
+    fname = ident(r, "searchWithSavedSegment")
+    sink = r.choice(["all", "query", "execute"])
+    return f"""
+async function {fname}(req, db, savedSegments) {{
+  const allowedSort = new Set(["name", "created_at", "email"]);
+  const sort = allowedSort.has(req.query.sort) ? req.query.sort : "created_at";
+  const saved = await savedSegments.loadForUser(req.user.id, req.params.segmentId);
+  const segment = saved.segmentSql || saved.whereClause;
+  const sql = "SELECT id,email FROM customers WHERE tenant_id = ? AND " + segment + " ORDER BY " + sort;
+  return db.{sink}(sql, [req.user.tenantId]);
+}}
+"""
+
+SAFE_FACTORIES = {
+    "python": [py_safe_allowlist, py_safe_dict_map_table, py_safe_placeholder_list, py_safe_numeric_bounds, py_safe_sqlalchemy_params, py_safe_comments_only_hard, py_safe_time_keyword_not_sql, py_safe_docstring_payload_no_sink, py_safe_payload_constant_log_only, py_safe_comments_only_more_strict],
+    "javascript": [js_safe_sequelize_replacements, js_safe_sequelize_replacements_named_v18, js_safe_sequelize_replacements_array_v18, js_safe_sequelize_bind_v18, js_safe_knex_params, js_safe_allowlist_order, js_safe_placeholder_list, js_safe_comments_only_hard, js_safe_time_keyword_not_sql],
+    "java": [java_safe_jdbctemplate, java_safe_jpa_setparameter, java_safe_prepared_order, java_safe_comments_only_hard, java_safe_time_keyword_not_sql, java_safe_named_jdbc_params_more, java_safe_jpa_named_params_more, java_named_jdbc_params_decoy_more],
+    "php": [php_safe_laravel_bindings, php_safe_pdo_prepare, php_safe_array_allowlist, php_safe_placeholder_list, php_safe_callable_non_db_alias, php_safe_callable_prepare_execute, php_safe_callable_query_literal, php_safe_callable_prepared_alias_with_raw_decoy, php_safe_comments_only_hard, php_safe_time_keyword_not_sql],
+}
+
+VULN_FACTORIES = {
+    "python": {
+        "IN_BAND": [py_vuln_raw_order, py_vuln_alias_execute, py_vuln_multi_query_one_unsafe, py_vuln_raw_table, py_vuln_raw_limit, py_vuln_joined_ids],
+        "BLIND": [py_blind_time_sleep, py_blind_time_if_sleep, py_blind_time_or_sleep_raw, py_blind_time_select_pg_sleep],
+        "SECOND_ORDER": [py_second_stored_filter_typed],
+    },
+    "javascript": {
+        "IN_BAND": [js_vuln_sequelize_raw, js_vuln_exec_alias, js_vuln_multi_query_one_unsafe, js_vuln_raw_order_despite_set, js_vuln_joined_ids, js_inband_template_direct_not_stored],
+        "BLIND": [js_blind_time_sleep, js_blind_time_if_sleep, js_blind_time_benchmark_concat, js_blind_time_waitfor_template, js_blind_count_helper_direct, js_blind_rows_length_direct],
+        "SECOND_ORDER": [js_second_cached_fragment_typed, js_second_saved_segment_repo_v18, js_second_db_loaded_segment_v18, js_second_config_order_v18, js_second_saved_segment_runner_v18, js_second_cached_filter_runner_v18, js_second_config_segment_runner_v18, js_second_db_loaded_where_runner_v18, js_second_profile_segment_runner_v18],
+    },
+    "java": {
+        "IN_BAND": [java_vuln_jdbc_raw, java_vuln_raw_order_decoy_prepared, java_vuln_multi_query_one_unsafe],
+        "BLIND": [java_blind_time_waitfor, java_blind_time_sleep, java_blind_time_dbms_sleep, java_blind_time_if_sleep],
+        "SECOND_ORDER": [java_second_config_where_typed],
+    },
+    "php": {
+        "IN_BAND": [php_vuln_pdo_raw_order, php_vuln_mysqli_concat, php_vuln_raw_ids_implode, php_vuln_pdo_raw_order_decoy, php_vuln_query_after_prepare, php_vuln_callable_query_alias, php_vuln_callable_this_pdo_query_alias, php_vuln_callable_mysqli_query_alias, php_vuln_callable_method_var_query_alias, php_vuln_callable_db_property_query_alias, php_inband_mysqli_customer_concat_direct, php_inband_implode_ids_direct, php_inband_laravel_raw_concat_direct, php_inband_pdo_query_direct_not_second_order],
+        "BLIND": [php_blind_time_sleep, php_blind_time_benchmark, php_blind_time_pg_sleep, php_blind_time_case_sleep, php_blind_time_raw_mysqli_variants, php_blind_time_raw_pdo_variants, php_blind_time_callable_alias_variants, php_blind_time_raw_more_direct],
+        "SECOND_ORDER": [php_second_stored_sql_typed],
+    },
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Pipeline helpers
-# ─────────────────────────────────────────────────────────────────────────────
+def v17_calibration_samples(seed: int, safe_per_family: int, hardcase_per_family: int, focus: Dict[str, int]):
+    r = random.Random(seed)
 
-def preprocess_to_ids(code: str, vocab: dict) -> np.ndarray:
-    cleaned = clean_code(code)
-    tokens  = tokenize_code(cleaned)
-    norm    = normalize_tokens(tokens)
-    unk_id  = vocab["UNK"]
-    pad_id  = vocab["PAD"]
-    ids = [vocab.get(t, unk_id) for t in norm]
-    if len(ids) >= MODEL_SEQ_LEN:
-        return np.array(ids[:MODEL_SEQ_LEN], dtype=np.int32)
-    return np.array(ids + [pad_id] * (MODEL_SEQ_LEN - len(ids)), dtype=np.int32)
+    # SAFE: keep V8 hard-SAFE knowledge, but with lower weights than V8 so V9
+    # does not miss vulnerable flows that merely contain prepared/allowlist decoys.
+    for lang, factories in SAFE_FACTORIES.items():
+        extra_lang = focus.get("NONE", 0) + focus.get(f"{lang}:NONE", 0)
+        for fi, fn in enumerate(factories):
+            n = safe_per_family + min(3, max(0, extra_lang // 4))
+            for j in range(n):
+                code = add_noise_to_code(lang, fn(r), r, salt=seed + fi * 1000 + j)
+                yield lang, "NONE", f"v18_safe_calibration/{seed}/{lang}/{fi}/{j:04d}", code, "SAFE", True, "safe"
 
+    # VULNERABLE: V18 keeps examples where the unsafe variable, not
+    # the safe decoy, reaches the SQL sink. This targets V8 false negatives and
+    # attack-type confusions without copying benchmark source files.
+    for lang, by_type in VULN_FACTORIES.items():
+        recall_extra = focus.get("hard_vuln_recall", 0) + focus.get(f"{lang}:hard_vuln_recall", 0)
+        for attack, factories in by_type.items():
+            for fi, fn in enumerate(factories):
+                extra = focus.get(attack, 0) + focus.get(f"{lang}:{attack}", 0) + focus.get(f"type:{attack}", 0)
+                n = hardcase_per_family + min(8, max(0, extra // 2) + max(0, recall_extra // 3))
+                for j in range(n):
+                    code = add_noise_to_code(lang, fn(r), r, salt=seed + fi * 1200 + j + 17)
+                    yield lang, attack, f"v18_vuln_flow/{seed}/{lang}/{attack}/{fi}/{j:04d}", code, "VULNERABLE", True, "vuln"
 
-def normalized_signature(code: str) -> tuple[str, ...]:
-    """Return the normalized token sequence — used to detect duplicates."""
-    return tuple(normalize_tokens(tokenize_code(clean_code(code))))
+    # Generic BLIND + SECOND_ORDER in all languages. These strengthen type
+    # discrimination: boolean return/fetchone/exists is BLIND; stored/config/db
+    # fragments used as SQL syntax are SECOND_ORDER.
+    for lang in LANG_EXT:
+        for attack, maker in [("BLIND", generic_blind), ("SECOND_ORDER", generic_second)]:
+            extra = focus.get(attack, 0) + focus.get(f"{lang}:{attack}", 0) + focus.get(f"type:{attack}", 0)
+            n = hardcase_per_family + min(8, max(0, extra // 2))
+            for j in range(n):
+                code = add_noise_to_code(lang, maker(lang, r), r, salt=seed + j + len(attack) * 99)
+                yield lang, attack, f"v18_type_flow/{seed}/{lang}/{attack}/{j:04d}", code, "VULNERABLE", True, "vuln_type"
 
+    # V18 focused JS SECOND_ORDER boost.
+    # This is intentionally narrow: the last remaining regression after V15 was
+    # JavaScript saved-segment SECOND_ORDER where the model predicted SAFE/NONE.
+    # We add more generated variants of saved/cache/config/db-loaded fragments
+    # later used as SQL syntax, without copying benchmark source files.
+    js_second_focused = [
+        js_second_saved_segment_repo_v18,
+        js_second_db_loaded_segment_v18,
+        js_second_config_order_v18,
+        js_second_saved_segment_runner_v18,
+        js_second_cached_filter_runner_v18,
+        js_second_config_segment_runner_v18,
+        js_second_db_loaded_where_runner_v18,
+        js_second_profile_segment_runner_v18,
+        js_second_saved_segment_runner_v18_route,
+        js_second_saved_filter_runner_v18_alias,
+        js_second_cached_segment_service_v18,
+        js_second_saved_segment_runner_v18_decoys,
+    ]
+    extra_js_second = focus.get("SECOND_ORDER", 0) + focus.get("javascript:SECOND_ORDER", 0) + focus.get("type:SECOND_ORDER", 0)
+    for fi, fn in enumerate(js_second_focused):
+        n = hardcase_per_family + 18 + min(16, max(0, extra_js_second // 2))
+        for j in range(n):
+            code = add_noise_to_code("javascript", fn(r), r, salt=seed + 90000 + fi * 500 + j)
+            yield "javascript", "SECOND_ORDER", f"v18_js_second_order_focus/{seed}/{fi}/{j:04d}", code, "VULNERABLE", True, "js_second_order_focus"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Dataset builder
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Attack-type taxonomy (Gap A from proposal alignment review)
-# ─────────────────────────────────────────────────────────────────────────────
-# The proposal (page 8, page 31) requires Model 1 to classify both:
-#   1. binary vuln/safe   → emitted as `y` (existing)
-#   2. attack type        → emitted as `y_type` (NEW)
-#
-# Class taxonomy (4 classes, matches proposal page 4):
-#   0 NONE         — safe code (no attack)
-#   1 IN_BAND      — direct injection that returns data; UNION is a sub-case
-#   2 BLIND        — boolean / time-based (no direct data return)
-#   3 SECOND_ORDER — store-then-execute pattern
-#
-# Mapping is purely metadata — derived from the existing `category` field on
-# each base sample. No new training data is added in this step.
-# ─────────────────────────────────────────────────────────────────────────────
-
-ATTACK_TYPE_NONE         = 0
-ATTACK_TYPE_IN_BAND      = 1
-ATTACK_TYPE_BLIND        = 2
-ATTACK_TYPE_SECOND_ORDER = 3
-
-ATTACK_TYPE_NAMES = {
-    ATTACK_TYPE_NONE:         "NONE",
-    ATTACK_TYPE_IN_BAND:      "IN_BAND",
-    ATTACK_TYPE_BLIND:        "BLIND",
-    ATTACK_TYPE_SECOND_ORDER: "SECOND_ORDER",
-}
-
-
-def category_to_attack_type(category: str, label: float) -> int:
-    """
-    Map a (sub-)category string to an attack-type ID.
-
-    Safe samples → NONE regardless of category.
-    Vulnerable samples → IN_BAND / BLIND / SECOND_ORDER by category prefix.
-
-    The default for unrecognised vulnerable categories is IN_BAND, which is
-    the broadest and most-populated class. We log unknowns at export time so
-    we can review before training.
-    """
-    if label == 0.0:
-        return ATTACK_TYPE_NONE
-
-    cat = category.lower()
-
-    # Strip "mut/<source>/<construction>/<sink>" → use the construction part
-    # for mutation-generated samples, since that's where the attack type lives.
-    if cat.startswith("mut/"):
-        parts = cat.split("/")
-        # parts[1] = source name, parts[2] = construction, parts[3] = sink
-        cat = parts[2] if len(parts) >= 3 else parts[-1]
-
-    # Order matters — check more specific patterns first
-    if "second_order" in cat or cat == "second_order":
-        return ATTACK_TYPE_SECOND_ORDER
-    if cat.startswith("blind"):
-        return ATTACK_TYPE_BLIND
-    # IN_BAND is the proposal's umbrella for: classic concat/fstring/format,
-    # and union-based (proposal page 4: "In-band SQLi (Union-based)")
-    if any(cat.startswith(p) for p in (
-        "fstring", "concat", "format", "union", "sprintf",
-        "stringbuilder", "sb_", "template",
-        "dot_", "dquote_", "insert_", "update_", "delete_",
-        "pct_", "ddl_inject",
-    )):
-        return ATTACK_TYPE_IN_BAND
-    # Default for any other vulnerable category — the broadest class
-    return ATTACK_TYPE_IN_BAND
+    # V18 keeps the SAFE Sequelize replacement calibration that V15 fixed.
+    js_seq_safe = [
+        js_safe_sequelize_replacements,
+        js_safe_sequelize_replacements_named_v18,
+        js_safe_sequelize_replacements_array_v18,
+        js_safe_sequelize_bind_v18,
+    ]
+    for fi, fn in enumerate(js_seq_safe):
+        n = safe_per_family + 6
+        for j in range(n):
+            code = add_noise_to_code("javascript", fn(r), r, salt=seed + 95000 + fi * 300 + j)
+            yield "javascript", "NONE", f"v18_js_safe_sequelize_focus/{seed}/{fi}/{j:04d}", code, "SAFE", True, "js_safe_sequelize_focus"
 
 
-def build_dataset(vocab: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
-    """
-    Apply every language-appropriate transform to every base sample.
-    Drop duplicates so the final count is honest.
-    Returns (X, y, y_type, statistics_dict).
-    """
-    rng = np.random.default_rng(42)
-
-    seen: set[tuple] = set()
-    X_list: list[np.ndarray] = []
-    y_list: list[float] = []
-    y_type_list: list[int] = []   # NEW — attack-type label per sample
-
-    raw_vuln = 0
-    raw_safe = 0
-    dup_vuln = 0
-    dup_safe = 0
-    unknown_categories: set[str] = set()
-
-    def _add_samples(base_samples, label):
-        nonlocal raw_vuln, raw_safe, dup_vuln, dup_safe
-        for language, category, code in base_samples:
-            transforms = TRANSFORMS_BY_LANGUAGE.get(language, [_py_identity])
-            for transform in transforms:
-                augmented = transform(code)
-                if label == 1.0:
-                    raw_vuln += 1
-                else:
-                    raw_safe += 1
-                sig = normalized_signature(augmented)
-                if sig in seen:
-                    if label == 1.0:
-                        dup_vuln += 1
-                    else:
-                        dup_safe += 1
-                    continue
-                seen.add(sig)
-                X_list.append(preprocess_to_ids(augmented, vocab))
-                y_list.append(label)
-                y_type_list.append(category_to_attack_type(category, label))
-
-    _add_samples(VULNERABLE_BASE, 1.0)
-    _add_samples(SAFE_BASE,       0.0)
-
-    # ── Append systematically mutated samples ─────────────────────────────
-    # Mutations are generated by combining fragments along 5 axes (source,
-    # sink, query type, construction style for vuln / validation style for safe,
-    # language). See scripts/dataset_mutations.py for the full taxonomy.
-    # We dedup against the hand-crafted BASE samples and against each other
-    # so the final dataset remains 100% unique sequences.
-    vuln_muts = generate_mutated_vuln()
-    safe_muts = generate_mutated_safe()
-    raw_vuln_before = raw_vuln
-    raw_safe_before = raw_safe
-    _add_samples(vuln_muts, 1.0)
-    _add_samples(safe_muts, 0.0)
-    mutation_added_vuln = (raw_vuln - raw_vuln_before)
-    mutation_added_safe = (raw_safe - raw_safe_before)
-
-    X = np.array(X_list, dtype=np.int32)
-    y = np.array(y_list, dtype=np.float32)
-    y_type = np.array(y_type_list, dtype=np.int32)
-
-    # Shuffle with fixed seed so train/val splits are reproducible
-    perm = rng.permutation(len(y))
-    X, y, y_type = X[perm], y[perm], y_type[perm]
-
-    # Per-class breakdown of the attack-type labels
-    type_counts = {
-        ATTACK_TYPE_NAMES[k]: int((y_type == k).sum())
-        for k in sorted(ATTACK_TYPE_NAMES)
-    }
-
-    stats = {
-        "raw_vuln_after_transform":  raw_vuln,
-        "raw_safe_after_transform":  raw_safe,
-        "dropped_dup_vuln":          dup_vuln,
-        "dropped_dup_safe":          dup_safe,
-        "kept_vuln":                 int(y.sum()),
-        "kept_safe":                 int((1 - y).sum()),
-        "mutation_base_vuln":        len(vuln_muts),
-        "mutation_base_safe":        len(safe_muts),
-        "mutation_raw_vuln":         mutation_added_vuln,
-        "mutation_raw_safe":         mutation_added_safe,
-        "attack_type_counts":        type_counts,
-    }
-    return X, y, y_type, stats
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Coverage report
+# V18 semantic-input additions.
+# V17 failed repeatedly on the same JS saved-segment flow because the model did
+# not see a strong semantic token for "stored fragment -> SQL syntax -> DB sink".
+# V18 therefore pairs the normalizer/vocabulary change with extra generated
+# variants that exercise the new STORED_SQL_FRAGMENT / SQL_FRAGMENT_TO_SYNTAX /
+# SECOND_ORDER_FLOW tokens.
 # ─────────────────────────────────────────────────────────────────────────────
 
-def signal_coverage(samples_with_label, signal: str) -> str:
-    """Fraction of base samples whose any-transform output contains `signal`."""
-    n_total = len(samples_with_label)
-    n_hit = 0
-    for lang, _cat, code in samples_with_label:
-        for transform in TRANSFORMS_BY_LANGUAGE.get(lang, [_py_identity]):
-            if signal in normalize_tokens(tokenize_code(clean_code(transform(code)))):
-                n_hit += 1
-                break
-    return f"{n_hit}/{n_total}"
+def js_second_saved_segment_semantic_v18(r):
+    fname = ident(r, "members")
+    return f"""
+class SegmentRepo {{
+  constructor(db) {{ this.db = db; }}
+  async load(ctx, id) {{
+    return this.db.get("SELECT where_clause FROM saved_segments WHERE tenant_id=? AND id=?", [ctx.tenantId, id]);
+  }}
+  async {fname}(ctx, id) {{
+    const segment = await this.load(ctx, id);
+    const whereClause = segment?.where_clause || "1=1";
+    const sql = `SELECT id,email FROM customers WHERE tenant_id=? AND ${{whereClause}} ORDER BY created_at DESC`;
+    return this.db.all(sql, [ctx.tenantId]);
+  }}
+}}
+"""
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Entry point
-# ─────────────────────────────────────────────────────────────────────────────
+def js_second_saved_filter_property_semantic_v18(r):
+    fname = ident(r, "run")
+    return f"""
+async function {fname}(req, db, savedFilters) {{
+  const savedFilter = await savedFilters.loadForTenant(req.user.tenantId, req.params.id);
+  const filterSql = savedFilter.sql_fragment || savedFilter.where_clause || "1=1";
+  const sql = "SELECT id,total FROM orders WHERE tenant_id=? AND " + filterSql;
+  return db.all(sql, [req.user.tenantId]);
+}}
+"""
 
-def main():
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # 1. Vocabulary
+def js_second_cache_fragment_semantic_v18(r):
+    fname = ident(r, "audit")
+    return f"""
+async function {fname}(ctx, db, cache) {{
+  const cachedSegment = await cache.get(`segment:${{ctx.segmentId}}`);
+  const predicate = cachedSegment?.filter_sql || "1=1";
+  const sql = `SELECT id, action FROM audit_log WHERE tenant_id=? AND ${{predicate}}`;
+  return db.all(sql, [ctx.tenantId]);
+}}
+"""
+
+
+def js_second_config_fragment_semantic_v18(r):
+    fname = ident(r, "report")
+    return f"""
+async function {fname}(req, db, configService) {{
+  const config = await configService.getReportConfig(req.user.tenantId, req.params.report);
+  const orderClause = config.order_clause || "created_at DESC";
+  const sql = "SELECT id,email FROM customers WHERE tenant_id=? ORDER BY " + orderClause;
+  return db.all(sql, [req.user.tenantId]);
+}}
+"""
+
+
+def v18_calibration_samples(seed: int, safe_per_family: int, hardcase_per_family: int, focus: Dict[str, int]):
+    # Keep all V17/V15 stability families first.
+    yield from v17_calibration_samples(seed, safe_per_family, hardcase_per_family, focus)
+
+    r = random.Random(seed + 18000)
+    js_second_v18 = [
+        js_second_saved_segment_semantic_v18,
+        js_second_saved_filter_property_semantic_v18,
+        js_second_cache_fragment_semantic_v18,
+        js_second_config_fragment_semantic_v18,
+    ]
+    extra_js_second = focus.get("SECOND_ORDER", 0) + focus.get("javascript:SECOND_ORDER", 0) + focus.get("type:SECOND_ORDER", 0)
+    for fi, fn in enumerate(js_second_v18):
+        n = hardcase_per_family + 22 + min(18, max(0, extra_js_second // 2))
+        for j in range(n):
+            code = add_noise_to_code("javascript", fn(r), r, salt=seed + 180000 + fi * 700 + j)
+            yield "javascript", "SECOND_ORDER", f"v18_semantic_js_second_order/{seed}/{fi}/{j:04d}", code, "VULNERABLE", True, "v18_semantic_js_second_order"
+
+    # Preserve the SAFE Sequelize calibration that must remain green.
+    seq_safe = [
+        js_safe_sequelize_replacements,
+        js_safe_sequelize_replacements_named_v18,
+        js_safe_sequelize_replacements_array_v18,
+        js_safe_sequelize_bind_v18,
+    ] if "js_safe_sequelize_replacements_named_v18" in globals() else [js_safe_sequelize_replacements]
+    for fi, fn in enumerate(seq_safe):
+        n = safe_per_family + 8
+        for j in range(n):
+            code = add_noise_to_code("javascript", fn(r), r, salt=seed + 181000 + fi * 400 + j)
+            yield "javascript", "NONE", f"v18_safe_sequelize_guard/{seed}/{fi}/{j:04d}", code, "SAFE", True, "v18_safe_sequelize_guard"
+
+def make_profile(arrays: dict, vocab: dict, sequence_length: int, duplicates_dropped: int) -> dict:
+    profile = _profile_dataset_base(arrays, vocab, sequence_length, duplicates_dropped)
+    profile["sample_family_counts"] = dict(Counter(map(str, arrays.get("sample_family", []))))
+    profile["avg_sample_weight_binary"] = float(np.mean(arrays["sample_weight_binary"])) if len(arrays["sample_weight_binary"]) else 1.0
+    profile["avg_sample_weight_type"] = float(np.mean(arrays["sample_weight_type"])) if len(arrays["sample_weight_type"]) else 1.0
+    return profile
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default="colab_export")
+    ap.add_argument("--sequence-length", type=int, default=256)
+    ap.add_argument("--generated-per-class", type=int, default=4, help="Base generated variants per class/language/seed")
+    ap.add_argument("--hardcase-per-family", type=int, default=14, help="Vulnerable flow variants per family/language/seed")
+    ap.add_argument("--safe-calibration-per-family", type=int, default=7, help="SAFE hard examples per safe family/language/seed")
+    ap.add_argument("--generated-seeds", nargs="*", type=int, default=[20260630, 20260701, 20260702])
+    ap.add_argument("--audit-csv", action="append", default=[], help="Optional audit CSV used only to focus generated families; no source copied.")
+    args = ap.parse_args()
+
+    out_dir = Path(args.out)
+    if not out_dir.is_absolute():
+        out_dir = BACKEND_DIR / out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     vocab = build_fixed_vocabulary()
-    vocab_path = os.path.join(OUTPUT_DIR, "vocabulary.json")
-    save_vocabulary(vocab, vocab_path)
-    print(f"[1/3] Vocabulary exported  ({len(vocab)} tokens) -> {vocab_path}")
+    builder = WeightedDatasetBuilder(vocab, args.sequence_length)
 
-    # 2. Dataset
-    X, y, y_type, stats = build_dataset(vocab)
-    n_unique = len(set(map(tuple, X.tolist())))
+    focus = audit_focus_from_csv(args.audit_csv)
+    print("Audit focus counts:", json.dumps(focus, indent=2, ensure_ascii=False))
 
-    data_path = os.path.join(OUTPUT_DIR, "training_data.npz")
-    np.savez(data_path, X=X, y=y, y_type=y_type)
-    print(
-        f"[2/3] Dataset exported     "
-        f"({len(X)} samples: {int(y.sum())} vuln, {int((1 - y).sum())} safe, "
-        f"{n_unique} unique) -> {data_path}"
-    )
+    print("[1/5] Adding original project export samples...")
+    add_original_export_samples(builder)
 
-    # 3. Diagnostic info
-    info = {
-        "vocab_size": len(vocab),
-        "model_seq_len": MODEL_SEQ_LEN,
-        "n_samples": len(X),
-        "n_unique_after_dedup": n_unique,
-        "n_vulnerable": int(y.sum()),
-        "n_safe": int((1 - y).sum()),
-        "base_vulnerable": len(VULNERABLE_BASE),
-        "base_safe": len(SAFE_BASE),
-        "attack_type_counts": stats["attack_type_counts"],
-        "attack_type_class_ids": {
-            "NONE": 0, "IN_BAND": 1, "BLIND": 2, "SECOND_ORDER": 3,
-        },
-        "augmentation": {
-            "type": "language-aware structural transforms",
-            "transforms_per_language": {
-                lang: len(ts) for lang, ts in TRANSFORMS_BY_LANGUAGE.items()
-            },
-            "deduplication": {
-                "raw_vuln_after_transform": stats["raw_vuln_after_transform"],
-                "raw_safe_after_transform": stats["raw_safe_after_transform"],
-                "dropped_dup_vuln":         stats["dropped_dup_vuln"],
-                "dropped_dup_safe":         stats["dropped_dup_safe"],
-            },
-        },
-        "signal_coverage": {
-            "FSTRING_SQL_in_vuln_base": signal_coverage(VULNERABLE_BASE, "FSTRING_SQL"),
-            "UNSAFE_EXEC_in_vuln_base": signal_coverage(VULNERABLE_BASE, "UNSAFE_EXEC"),
-            "SQL_CONCAT_in_vuln_base":  signal_coverage(VULNERABLE_BASE, "SQL_CONCAT"),
-            "SAFE_EXEC_in_safe_base":   signal_coverage(SAFE_BASE,       "SAFE_EXEC"),
-        },
-        "architecture": {
-            "embed_dim":          64,
-            "conv_filters":       64,
-            "kernel_size":        3,
-            "lstm_hidden":        32,
-            "dense_hidden":       64,
-            "dense_in":           128,
-            # Dual-head: vuln head (sigmoid) + attack-type head (softmax over 4 classes)
-            "vuln_head_activation":   "sigmoid",
-            "type_head_activation":   "softmax",
-            "type_head_classes":      4,
-        },
-        # Weight keys produced by training and consumed by the backend.
-        # Includes the new attack-type head (dense2_type_W / dense2_type_b).
-        "weights_keys": [
-            "emb_W", "conv_W", "conv_b",
-            "bilstm_fwd_W", "bilstm_fwd_b",
-            "bilstm_bwd_W", "bilstm_bwd_b",
-            "dense1_W",      "dense1_b",
-            "dense2_W",      "dense2_b",            # vuln head (1×64)
-            "dense2_type_W", "dense2_type_b",       # NEW: attack-type head (4×64)
-        ],
+    print("[2/5] Adding lower-weight generated baseline samples...")
+    for seed in args.generated_seeds:
+        for lang, attack, source_id, code in generated_training_samples(seed, args.generated_per_class):
+            label = "SAFE" if attack == "NONE" else "VULNERABLE"
+            builder.add(
+                code, label, attack, lang,
+                path=f"{source_id}.{LANG_EXT[lang]}",
+                source_id=source_id,
+                suite_name="generated_baseline_v4_low_weight",
+                binary_weight=1.0,
+                type_weight=1.0,
+                family=f"baseline:{attack}",
+            )
+
+    print("[3/5] Adding V18 type-balanced hard-SAFE + hard-VULNERABLE + IN_BAND/BLIND/SECOND_ORDER calibration variants...")
+    for seed in args.generated_seeds:
+        for lang, attack, source_id, code, label, focused, sample_kind in v18_calibration_samples(
+            seed, args.safe_calibration_per_family, args.hardcase_per_family, focus
+        ):
+            if label == "SAFE":
+                # Keep SAFE calibration, but do not let it suppress true vulnerabilities.
+                if sample_kind == "js_safe_sequelize_focus":
+                    # Preserve the V15 win: Sequelize replacements/bind must stay SAFE.
+                    bw, tw = 4.2, 3.6
+                    family = "v18_js_safe_sequelize_focus"
+                else:
+                    bw, tw = 3.2, 2.6
+                    family = f"v18_flow_safe:{lang}"
+            else:
+                # V18 keeps V14/V15 type balance, with a narrow JS SECOND_ORDER boost.
+                if sample_kind == "js_second_order_focus":
+                    bw, tw = 5.2, 7.2
+                    family = "v18_js_second_order_focus"
+                elif attack == "IN_BAND":
+                    # Direct raw SQL / concat / template examples must not collapse into SECOND_ORDER.
+                    bw, tw = 4.2, 5.8
+                    family = f"v18_flow_vuln:{attack}"
+                elif attack == "BLIND":
+                    # Time/boolean/security-decision BLIND flows.
+                    bw, tw = 4.6, 7.6
+                    family = f"v18_flow_vuln:{attack}"
+                else:  # SECOND_ORDER
+                    # General SECOND_ORDER remains lower than the focused JS variants to avoid over-predicting it globally.
+                    bw, tw = 3.4, 2.8
+                    family = f"v18_flow_vuln:{attack}"
+            builder.add(
+                code, label, attack, lang,
+                path=f"{source_id}.{LANG_EXT[lang]}",
+                source_id=source_id,
+                suite_name="generated_v18_js_second_order_focus_calibration",
+                binary_weight=bw,
+                type_weight=tw,
+                family=family,
+            )
+
+    print("[4/5] Writing arrays and vocabulary...")
+    arrays = builder.arrays()
+    rng = np.random.default_rng(42)
+    perm = rng.permutation(len(arrays["y"]))
+    arrays = {k: v[perm] for k, v in arrays.items()}
+
+    save_vocabulary(vocab, str(out_dir / "vocabulary.json"))
+    np.savez(out_dir / "training_data.npz", **arrays)
+
+    profile = make_profile(arrays, vocab, args.sequence_length, builder.duplicates_dropped)
+    (out_dir / "dataset_profile.json").write_text(json.dumps(profile, indent=2, ensure_ascii=False), encoding="utf-8")
+    export_info = {
+        "export_version": "model1-v18-js-second-order-focused-same-names",
+        "sequence_length": args.sequence_length,
+        "generated_seeds": args.generated_seeds,
+        "generated_per_class_baseline": args.generated_per_class,
+        "hardcase_per_family": args.hardcase_per_family,
+        "safe_calibration_per_family": args.safe_calibration_per_family,
+        "audit_csvs": args.audit_csv,
+        "audit_focus_counts": focus,
+        "anti_leakage_note": "Audit CSVs focus generated family counts only; benchmark source files are not copied.",
+        "main_goal": "V18 semantic-input: add normalizer/vocabulary tokens for stored/config/cache fragments reaching SQL syntax, then retrain the CNN+BiLSTM on those signals while preserving V14/V15/V17 stability",
+        "profile": profile,
     }
-    info_path = os.path.join(OUTPUT_DIR, "export_info.json")
-    with open(info_path, "w") as f:
-        json.dump(info, f, indent=2)
-    print(f"[3/3] Export info written               -> {info_path}")
+    (out_dir / "export_info.json").write_text(json.dumps(export_info, indent=2, ensure_ascii=False), encoding="utf-8")
+    (out_dir / "audit_focus_counts.json").write_text(json.dumps(focus, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    # Console summary
-    print()
-    print("Augmentation effectiveness:")
-    print(f"  Raw VULN samples after transform: {stats['raw_vuln_after_transform']:>4}  "
-          f"(dropped {stats['dropped_dup_vuln']} dupes -> kept {stats['kept_vuln']})")
-    print(f"  Raw SAFE samples after transform: {stats['raw_safe_after_transform']:>4}  "
-          f"(dropped {stats['dropped_dup_safe']} dupes -> kept {stats['kept_safe']})")
-    print(f"  Final n_samples == n_unique:      {len(X) == n_unique}")
-    print()
-    print(f"Mutation contribution:")
-    print(f"  Mutation BASE vuln samples generated: {stats['mutation_base_vuln']:>4}")
-    print(f"  Mutation BASE safe samples generated: {stats['mutation_base_safe']:>4}")
-    print(f"  Mutation RAW (after transforms) vuln: {stats['mutation_raw_vuln']:>4}")
-    print(f"  Mutation RAW (after transforms) safe: {stats['mutation_raw_safe']:>4}")
-    print()
-    print("Signal coverage (across base samples after augmentation):")
-    for k, v in info["signal_coverage"].items():
-        print(f"  {k:30s} {v}")
-    print()
-    print("Attack-type label distribution (Gap A, dual-head training):")
-    total = sum(stats["attack_type_counts"].values())
-    for name, count in stats["attack_type_counts"].items():
-        pct = (100.0 * count / total) if total else 0.0
-        print(f"  {name:14s} {count:>5d}  ({pct:5.1f}%)")
-    print()
-    print("=" * 60)
-    print("Colab export complete.")
-    print(f"  Upload: {vocab_path}")
-    print(f"          {data_path}")
-    print(f"  Run:    model1_detection.py")
-    print("=" * 60)
+    print("[5/5] Done.")
+    print(f"Output dir: {out_dir}")
+    print(json.dumps(profile, indent=2, ensure_ascii=False))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
