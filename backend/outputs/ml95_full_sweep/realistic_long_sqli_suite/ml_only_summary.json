@@ -1,27 +1,27 @@
-{
+﻿{
   "suite": "realistic_long_sqli_suite.zip",
   "mode": "ml-only",
-  "model_version": "model1-cnn-bilstm-dual-head-v18-ml95-binary",
+  "model_version": "model1-cnn-bilstm-dual-head-v18-ml95-v2-normalizer",
   "weights_path": "C:\\Users\\zaidn\\OneDrive\\Documents\\final\\sqli-project\\backend\\app\\model\\weights\\sqli_model.npz",
   "metadata_path": "C:\\Users\\zaidn\\OneDrive\\Documents\\final\\sqli-project\\backend\\app\\model\\weights\\sqli_detection_metadata.json",
   "vocabulary_sha256": "ca61dd07150bbcb7c4b4e4a0dbd17b6c97fca2cd42063f16e6557b17335a6008",
-  "threshold": 0.52,
+  "threshold": 0.96,
   "threshold_source": "metadata.threshold",
   "total": 18,
   "safe_count": 6,
   "vulnerable_count": 12,
-  "binary_correct": 13,
-  "binary_accuracy": 0.7222222222222222,
-  "full_correct": 7,
-  "full_accuracy": 0.3888888888888889,
-  "precision": 0.7058823529411765,
-  "recall": 1.0,
-  "specificity": 0.16666666666666666,
-  "f1": 0.8275862068965517,
-  "false_positives": 5,
-  "false_negatives": 0,
-  "true_positives": 12,
-  "true_negatives": 1,
+  "binary_correct": 15,
+  "binary_accuracy": 0.8333333333333334,
+  "full_correct": 14,
+  "full_accuracy": 0.7777777777777778,
+  "precision": 0.8461538461538461,
+  "recall": 0.9166666666666666,
+  "specificity": 0.6666666666666666,
+  "f1": 0.8799999999999999,
+  "false_positives": 2,
+  "false_negatives": 1,
+  "true_positives": 11,
+  "true_negatives": 4,
   "expected_attack_distribution": {
     "NONE": 6,
     "IN_BAND": 4,
@@ -29,9 +29,9 @@
     "SECOND_ORDER": 4
   },
   "ml_attack_distribution": {
-    "IN_BAND": 8,
-    "SECOND_ORDER": 5,
-    "NONE": 3,
-    "BLIND": 2
+    "NONE": 5,
+    "IN_BAND": 2,
+    "BLIND": 7,
+    "SECOND_ORDER": 4
   }
 }

@@ -1,0 +1,37 @@
+{
+  "suite": "v18_remaining_edge_focused_suite.zip",
+  "mode": "ml-only",
+  "model_version": "model1-cnn-bilstm-dual-head-v18-ml95-v2-normalizer",
+  "weights_path": "C:\\Users\\zaidn\\OneDrive\\Documents\\final\\sqli-project\\backend\\app\\model\\weights\\sqli_model.npz",
+  "metadata_path": "C:\\Users\\zaidn\\OneDrive\\Documents\\final\\sqli-project\\backend\\app\\model\\weights\\sqli_detection_metadata.json",
+  "vocabulary_sha256": "ca61dd07150bbcb7c4b4e4a0dbd17b6c97fca2cd42063f16e6557b17335a6008",
+  "threshold": 0.3,
+  "threshold_source": "cli",
+  "total": 28,
+  "safe_count": 12,
+  "vulnerable_count": 16,
+  "binary_correct": 18,
+  "binary_accuracy": 0.6428571428571429,
+  "full_correct": 16,
+  "full_accuracy": 0.5714285714285714,
+  "precision": 0.6363636363636364,
+  "recall": 0.875,
+  "specificity": 0.3333333333333333,
+  "f1": 0.7368421052631579,
+  "false_positives": 8,
+  "false_negatives": 2,
+  "true_positives": 14,
+  "true_negatives": 4,
+  "expected_attack_distribution": {
+    "NONE": 12,
+    "IN_BAND": 8,
+    "SECOND_ORDER": 3,
+    "BLIND": 5
+  },
+  "ml_attack_distribution": {
+    "NONE": 6,
+    "SECOND_ORDER": 7,
+    "IN_BAND": 10,
+    "BLIND": 5
+  }
+}

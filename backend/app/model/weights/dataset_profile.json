@@ -1,161 +1,161 @@
 {
-  "created_at": "2026-05-10T16:47:52.319476Z",
-  "n_samples": 2456,
+  "created_at": "2026-05-11T08:56:41.358145Z",
+  "n_samples": 2435,
   "sequence_length": 256,
   "vocabulary_size": 189,
   "vocabulary_sha256": "ca61dd07150bbcb7c4b4e4a0dbd17b6c97fca2cd42063f16e6557b17335a6008",
   "pad_id": 0,
   "unk_id": 1,
   "verdict_counts": {
-    "SAFE": 1179,
-    "VULNERABLE": 1277
+    "SAFE": 1169,
+    "VULNERABLE": 1266
   },
   "attack_type_counts": {
-    "NONE": 1179,
-    "IN_BAND": 440,
-    "BLIND": 333,
+    "NONE": 1169,
+    "IN_BAND": 435,
+    "BLIND": 327,
     "SECOND_ORDER": 504
   },
   "language_counts": {
-    "javascript": 930,
-    "python": 570,
-    "java": 254,
-    "php": 702
+    "python": 572,
+    "javascript": 929,
+    "java": 245,
+    "php": 689
   },
   "sample_family_counts": {
-    "v18_js_second_order_focus": 177,
-    "v18_flow_vuln:SECOND_ORDER": 288,
-    "v18_flow_vuln:BLIND": 293,
     "v18_flow_safe:python": 174,
-    "v18_flow_safe:javascript|binary_balance_safe_resample": 139,
-    "baseline:SECOND_ORDER": 39,
-    "v18_flow_safe:php": 167,
-    "v18_flow_safe:python|binary_balance_safe_resample": 185,
-    "v18_flow_safe:php|binary_balance_safe_resample": 173,
+    "v18_flow_vuln:SECOND_ORDER": 288,
     "v18_flow_safe:javascript": 136,
-    "v18_flow_vuln:IN_BAND": 402,
+    "v18_flow_vuln:BLIND": 292,
+    "v18_flow_safe:php": 167,
+    "v18_flow_vuln:IN_BAND": 397,
+    "v18_flow_safe:php|binary_balance_safe_resample": 168,
+    "v18_flow_safe:python|binary_balance_safe_resample": 183,
+    "baseline:SECOND_ORDER": 39,
+    "v18_js_second_order_focus": 177,
     "baseline:NONE|binary_balance_safe_resample": 36,
-    "baseline:NONE": 40,
-    "v18_js_safe_sequelize_focus": 24,
-    "baseline:BLIND": 40,
-    "v18_js_safe_sequelize_focus|binary_balance_safe_resample": 27,
-    "v18_flow_safe:java": 39,
     "baseline:IN_BAND": 38,
-    "v18_flow_safe:java|binary_balance_safe_resample": 39
+    "baseline:BLIND": 35,
+    "v18_js_safe_sequelize_focus|binary_balance_safe_resample": 26,
+    "baseline:NONE": 40,
+    "v18_flow_safe:javascript|binary_balance_safe_resample": 138,
+    "v18_flow_safe:java": 39,
+    "v18_js_safe_sequelize_focus": 24,
+    "v18_flow_safe:java|binary_balance_safe_resample": 38
   },
-  "avg_sample_weight_binary": 3.546172857284546,
-  "avg_sample_weight_type": 3.9702768325805664,
+  "avg_sample_weight_binary": 3.5506367683410645,
+  "avg_sample_weight_type": 3.9763450622558594,
   "max_sample_weight_binary": 5.199999809265137,
   "max_sample_weight_type": 7.599999904632568,
-  "avg_non_pad_length": 101.54885993485343,
-  "max_non_pad_length": 256,
+  "avg_non_pad_length": 101.42874743326489,
+  "max_non_pad_length": 250,
   "min_non_pad_length": 36,
-  "padded_samples": 2450,
-  "truncated_samples": 6,
-  "truncation_rate": 0.0024429967426710096,
+  "padded_samples": 2435,
+  "truncated_samples": 0,
+  "truncation_rate": 0.0,
   "unk_token_count": 0,
   "unk_rate": 0.0,
-  "duplicate_sequence_count": 599,
+  "duplicate_sequence_count": 589,
   "top_tokens": [
     [
       "=",
-      17604
+      17398
     ],
     [
       ";",
-      16808
+      16534
     ],
     [
       "(",
-      16490
+      16320
     ],
     [
       ")",
-      16486
+      16320
     ],
     [
       ".",
-      13857
+      13671
     ],
     [
       "STRING",
-      11744
+      11599
     ],
     [
       ",",
-      8885
+      8807
     ],
     [
       "NUMBER",
-      7224
+      7141
     ],
     [
       "VAR_3",
-      6101
+      5982
     ],
     [
       "VAR_1",
-      5805
+      5761
     ],
     [
       "{",
-      5763
+      5690
     ],
     [
       "}",
-      5751
+      5690
     ],
     [
       "VAR_4",
-      5331
+      5344
     ],
     [
       "VAR_2",
-      5099
+      5060
     ],
     [
       "VAR_5",
-      4679
+      4613
     ],
     [
       ":",
-      4293
+      4269
     ],
     [
       "VAR_6",
-      4088
+      4049
     ],
     [
       "[",
-      4078
+      4029
     ],
     [
       "]",
-      4078
+      4029
     ],
     [
       "VAR_7",
-      3933
+      3911
     ],
     [
       "SAFE_NUMERIC_VAR",
-      3793
+      3745
     ],
     [
       "VAR_8",
-      3528
+      3511
     ],
     [
       "VAR_0",
-      3262
+      3203
     ],
     [
       "VAR_9",
-      3090
+      3076
     ],
     [
       "return",
-      3080
+      3071
     ]
   ]
 }

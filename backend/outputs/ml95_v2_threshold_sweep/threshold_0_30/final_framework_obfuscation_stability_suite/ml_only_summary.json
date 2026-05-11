@@ -1,0 +1,37 @@
+{
+  "suite": "final_framework_obfuscation_stability_suite.zip",
+  "mode": "ml-only",
+  "model_version": "model1-cnn-bilstm-dual-head-v18-ml95-v2-normalizer",
+  "weights_path": "C:\\Users\\zaidn\\OneDrive\\Documents\\final\\sqli-project\\backend\\app\\model\\weights\\sqli_model.npz",
+  "metadata_path": "C:\\Users\\zaidn\\OneDrive\\Documents\\final\\sqli-project\\backend\\app\\model\\weights\\sqli_detection_metadata.json",
+  "vocabulary_sha256": "ca61dd07150bbcb7c4b4e4a0dbd17b6c97fca2cd42063f16e6557b17335a6008",
+  "threshold": 0.3,
+  "threshold_source": "cli",
+  "total": 64,
+  "safe_count": 32,
+  "vulnerable_count": 32,
+  "binary_correct": 38,
+  "binary_accuracy": 0.59375,
+  "full_correct": 30,
+  "full_accuracy": 0.46875,
+  "precision": 0.5576923076923077,
+  "recall": 0.90625,
+  "specificity": 0.28125,
+  "f1": 0.6904761904761905,
+  "false_positives": 23,
+  "false_negatives": 3,
+  "true_positives": 29,
+  "true_negatives": 9,
+  "expected_attack_distribution": {
+    "NONE": 32,
+    "IN_BAND": 16,
+    "BLIND": 8,
+    "SECOND_ORDER": 8
+  },
+  "ml_attack_distribution": {
+    "IN_BAND": 29,
+    "SECOND_ORDER": 7,
+    "BLIND": 16,
+    "NONE": 12
+  }
+}

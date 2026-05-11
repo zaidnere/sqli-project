@@ -1,0 +1,37 @@
+{
+  "suite": "realistic_long_sqli_suite.zip",
+  "mode": "ml-only",
+  "model_version": "model1-cnn-bilstm-dual-head-v18-ml95-v2-normalizer",
+  "weights_path": "C:\\Users\\zaidn\\OneDrive\\Documents\\final\\sqli-project\\backend\\app\\model\\weights\\sqli_model.npz",
+  "metadata_path": "C:\\Users\\zaidn\\OneDrive\\Documents\\final\\sqli-project\\backend\\app\\model\\weights\\sqli_detection_metadata.json",
+  "vocabulary_sha256": "ca61dd07150bbcb7c4b4e4a0dbd17b6c97fca2cd42063f16e6557b17335a6008",
+  "threshold": 0.88,
+  "threshold_source": "cli",
+  "total": 18,
+  "safe_count": 6,
+  "vulnerable_count": 12,
+  "binary_correct": 15,
+  "binary_accuracy": 0.8333333333333334,
+  "full_correct": 14,
+  "full_accuracy": 0.7777777777777778,
+  "precision": 0.8,
+  "recall": 1.0,
+  "specificity": 0.5,
+  "f1": 0.888888888888889,
+  "false_positives": 3,
+  "false_negatives": 0,
+  "true_positives": 12,
+  "true_negatives": 3,
+  "expected_attack_distribution": {
+    "NONE": 6,
+    "IN_BAND": 4,
+    "BLIND": 4,
+    "SECOND_ORDER": 4
+  },
+  "ml_attack_distribution": {
+    "IN_BAND": 4,
+    "BLIND": 7,
+    "SECOND_ORDER": 4,
+    "NONE": 3
+  }
+}

@@ -1,0 +1,18 @@
+# ML-only Suite Evaluation
+- Suite: **mega_sqli_debug_suite.zip**
+- Model version: **model1-cnn-bilstm-dual-head-v18-ml95-v2-normalizer**
+- Weights: `C:\Users\zaidn\OneDrive\Documents\final\sqli-project\backend\app\model\weights\sqli_model.npz`
+- Metadata: `C:\Users\zaidn\OneDrive\Documents\final\sqli-project\backend\app\model\weights\sqli_detection_metadata.json`
+- Threshold: **0.9900** from `cli`
+- Total: **40**
+- Binary ML accuracy: **39/40** (97.50%)
+- Full ML label+type accuracy: **38/40** (95.00%)
+- Precision / Recall / F1: **0.9615 / 1.0000 / 0.9804**
+- FP / FN: **1 / 0**
+- Expected attack distribution: `{'IN_BAND': 15, 'NONE': 15, 'BLIND': 5, 'SECOND_ORDER': 5}`
+- ML attack distribution: `{'IN_BAND': 14, 'NONE': 14, 'BLIND': 6, 'SECOND_ORDER': 6}`
+
+## Failures
+
+- `mega_sqli_debug_suite/php/040_IN_BAND_vuln_raw_order_by.php` expected `VULNERABLE / IN_BAND` got `VULNERABLE / SECOND_ORDER` risk `1.0`
+- `mega_sqli_debug_suite/python/010_NONE_safe_parameterized_boolean.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9994`

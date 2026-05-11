@@ -1,21 +1,21 @@
 {
   "strategy": "stratified_by_attack_type_and_language_when_available",
   "seed": 42,
-  "train_count": 1719,
-  "val_count": 368,
-  "test_count": 369,
-  "train_indices_sha256": "b0c921acaaa1d95d3bdf4699eaf8e4e4fca948d7837095f7f74695b8f87717f7",
-  "val_indices_sha256": "4a11e170165df45481006f7818fae5a416d7c3956f3398e1e54578ab3ff8bd51",
-  "test_indices_sha256": "7ead5a22b0fb7d30a4bc815b5255214e1596cc972eaf9c80be96365a0d0e9bf8",
+  "train_count": 1705,
+  "val_count": 366,
+  "test_count": 364,
+  "train_indices_sha256": "80590c1b665539ef1d8443a67d54b48561dda62609910efcf464f2a7cc5d11c3",
+  "val_indices_sha256": "d6465485bc5d4274108472d0d03613e56d8ade04182a8d2d7490ce21aa72c6ee",
+  "test_indices_sha256": "2a5a9cf674fff0a121cfaffec0590cd73b3710a1ae3c4ded99a4213f722e4657",
   "binary_class_weights": {
-    "SAFE": 1.2099756002426147,
-    "VULNERABLE": 1.1716089248657227
+    "SAFE": 1.207448124885559,
+    "VULNERABLE": 1.173871397972107
   },
   "attack_type_class_weights": {
-    "NONE": 0.6519265174865723,
-    "IN_BAND": 2.1557037830352783,
-    "BLIND": 3.2461800575256348,
-    "SECOND_ORDER": 1.1565510034561157
+    "NONE": 0.6505647301673889,
+    "IN_BAND": 2.173314094543457,
+    "BLIND": 3.2617390155792236,
+    "SECOND_ORDER": 1.150390625
   },
   "type_hardcase_boost": {
     "NONE": 1.25,
@@ -28,30 +28,30 @@
     "VULNERABLE": 1.2200000286102295
   },
   "sample_weight_summary": {
-    "train_binary_mean": 3.5600931644439697,
-    "train_type_mean": 3.998137950897217,
+    "train_binary_mean": 3.5555427074432373,
+    "train_type_mean": 4.003049373626709,
     "train_binary_max": 5.199999809265137,
     "train_type_max": 7.599999904632568
   },
   "train_family_counts": {
-    "baseline:NONE|binary_balance_safe_resample": 22,
-    "v18_js_second_order_focus": 130,
+    "v18_flow_safe:php|binary_balance_safe_resample": 114,
+    "v18_flow_vuln:SECOND_ORDER": 191,
+    "v18_flow_safe:php": 117,
+    "v18_flow_safe:javascript|binary_balance_safe_resample": 101,
     "v18_flow_vuln:BLIND": 207,
-    "v18_flow_safe:javascript": 95,
-    "v18_flow_vuln:IN_BAND": 283,
-    "v18_flow_vuln:SECOND_ORDER": 192,
-    "v18_flow_safe:python|binary_balance_safe_resample": 124,
-    "v18_flow_safe:php|binary_balance_safe_resample": 119,
-    "v18_flow_safe:python": 132,
+    "v18_flow_safe:java|binary_balance_safe_resample": 23,
+    "v18_js_safe_sequelize_focus": 21,
+    "v18_flow_safe:python|binary_balance_safe_resample": 129,
+    "v18_flow_vuln:IN_BAND": 278,
+    "v18_flow_safe:javascript": 85,
+    "v18_flow_safe:java": 30,
+    "v18_js_second_order_focus": 133,
+    "baseline:SECOND_ORDER": 28,
+    "baseline:NONE|binary_balance_safe_resample": 28,
+    "v18_flow_safe:python": 118,
+    "baseline:NONE": 34,
+    "baseline:BLIND": 23,
     "baseline:IN_BAND": 26,
-    "v18_flow_safe:php": 118,
-    "baseline:NONE": 26,
-    "baseline:BLIND": 26,
-    "v18_js_safe_sequelize_focus|binary_balance_safe_resample": 17,
-    "v18_flow_safe:javascript|binary_balance_safe_resample": 95,
-    "v18_flow_safe:java|binary_balance_safe_resample": 27,
-    "baseline:SECOND_ORDER": 31,
-    "v18_js_safe_sequelize_focus": 19,
-    "v18_flow_safe:java": 30
+    "v18_js_safe_sequelize_focus|binary_balance_safe_resample": 19
   }
 }

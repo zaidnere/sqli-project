@@ -74,7 +74,7 @@ SUITES: list[tuple[str, str]] = [
 def read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def metric_block_from_baseline(raw: dict[str, Any]) -> dict[str, Any]:

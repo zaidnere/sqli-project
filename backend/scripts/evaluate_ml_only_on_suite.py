@@ -82,7 +82,7 @@ def read_manifest(root: Path) -> dict[str, Tuple[str, str]]:
     mf = root / "manifest.csv"
     if not mf.exists():
         return out
-    with mf.open("r", encoding="utf-8-sig", newline="") as f:
+    with mf.open("r", encoding='utf-8-sig', newline="") as f:
         for row in csv.DictReader(f):
             rel = row.get("file") or row.get("path") or row.get("relative_path")
             label = (row.get("expected_label") or row.get("label") or "").strip().upper()
@@ -96,7 +96,7 @@ def _safe_read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding='utf-8-sig'))
     except Exception:
         return {}
 
@@ -285,7 +285,7 @@ def main() -> int:
             if not expected:
                 continue
             exp_label, exp_attack = expected
-            code = f.read_text(encoding="utf-8", errors="replace")
+            code = f.read_text(encoding='utf-8-sig', errors="replace")
             pred = ml_predict_code(
                 code=code,
                 filename=f.name,
@@ -344,7 +344,7 @@ def main() -> int:
     f1 = (2 * precision * recall) / max(1e-12, precision + recall)
 
     csv_path = out_dir / "ml_only_results.csv"
-    with csv_path.open("w", encoding="utf-8-sig", newline="") as f:
+    with csv_path.open("w", encoding='utf-8-sig', newline="") as f:
         fieldnames = list(rows[0].keys()) if rows else ["file"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if rows:
@@ -401,12 +401,12 @@ def main() -> int:
                 f"got `{r['ml_label']} / {r['ml_attack_type']}` risk `{r['ml_risk']}`\n"
             )
 
-    (out_dir / "ml_only_summary.md").write_text("".join(md), encoding="utf-8")
-    (out_dir / "ml_only_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    (out_dir / "ml_only_summary.md").write_text("".join(md), encoding='utf-8-sig')
+    (out_dir / "ml_only_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8-sig')
 
     if args.debug_preprocess:
         debug_path = out_dir / "debug_preprocess.jsonl"
-        with debug_path.open("w", encoding="utf-8") as f:
+        with debug_path.open("w", encoding='utf-8-sig') as f:
             for record in debug_records:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         print(f"Wrote debug preprocess: {debug_path}")
@@ -420,3 +420,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

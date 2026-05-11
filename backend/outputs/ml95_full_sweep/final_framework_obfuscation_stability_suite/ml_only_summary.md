@@ -1,62 +1,38 @@
-# ML-only Suite Evaluation
+﻿# ML-only Suite Evaluation
 - Suite: **final_framework_obfuscation_stability_suite.zip**
-- Model version: **model1-cnn-bilstm-dual-head-v18-ml95-binary**
+- Model version: **model1-cnn-bilstm-dual-head-v18-ml95-v2-normalizer**
 - Weights: `C:\Users\zaidn\OneDrive\Documents\final\sqli-project\backend\app\model\weights\sqli_model.npz`
 - Metadata: `C:\Users\zaidn\OneDrive\Documents\final\sqli-project\backend\app\model\weights\sqli_detection_metadata.json`
-- Threshold: **0.5200** from `metadata.threshold`
+- Threshold: **0.9600** from `metadata.threshold`
 - Total: **64**
-- Binary ML accuracy: **32/64** (50.00%)
-- Full ML label+type accuracy: **18/64** (28.12%)
-- Precision / Recall / F1: **0.5000 / 1.0000 / 0.6667**
-- FP / FN: **32 / 0**
+- Binary ML accuracy: **49/64** (76.56%)
+- Full ML label+type accuracy: **42/64** (65.62%)
+- Precision / Recall / F1: **0.7297 / 0.8438 / 0.7826**
+- FP / FN: **10 / 5**
 - Expected attack distribution: `{'NONE': 32, 'IN_BAND': 16, 'BLIND': 8, 'SECOND_ORDER': 8}`
-- ML attack distribution: `{'IN_BAND': 32, 'BLIND': 22, 'NONE': 5, 'SECOND_ORDER': 5}`
+- ML attack distribution: `{'IN_BAND': 15, 'SECOND_ORDER': 6, 'BLIND': 16, 'NONE': 27}`
 
 ## Failures
 
-- `final_framework_obfuscation_stability_suite/java/033_SAFE_spring_jdbctemplate_params.java` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.9989`
-- `final_framework_obfuscation_stability_suite/java/035_SAFE_jpa_native_query_params.java` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.9976`
-- `final_framework_obfuscation_stability_suite/java/038_SECOND_ORDER_helper_return_fragment.java` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`
-- `final_framework_obfuscation_stability_suite/java/039_SAFE_set_contains_decoys.java` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9741`
-- `final_framework_obfuscation_stability_suite/java/040_IN_BAND_raw_order_despite_decoy.java` expected `VULNERABLE / IN_BAND` got `VULNERABLE / NONE` risk `1.0`
-- `final_framework_obfuscation_stability_suite/java/041_SAFE_huge_prepared.java` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9741`
-- `final_framework_obfuscation_stability_suite/java/043_SAFE_hebrew_comments.java` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9741`
-- `final_framework_obfuscation_stability_suite/java/045_SAFE_multi_query_file.java` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9741`
-- `final_framework_obfuscation_stability_suite/java/047_SAFE_only_comments.java` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9294`
-- `final_framework_obfuscation_stability_suite/java/048_SAFE_broken_syntax_no_crash.java` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9294`
-- `final_framework_obfuscation_stability_suite/javascript/017_SAFE_express_sequelize_replacements.js` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.9995`
-- `final_framework_obfuscation_stability_suite/javascript/019_SAFE_knex_where_params.js` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.9995`
-- `final_framework_obfuscation_stability_suite/javascript/021_BLIND_express_session_auth.js` expected `VULNERABLE / BLIND` got `VULNERABLE / NONE` risk `1.0`
-- `final_framework_obfuscation_stability_suite/javascript/023_SAFE_params_variable_and_decoys.js` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.9995`
-- `final_framework_obfuscation_stability_suite/javascript/025_SAFE_huge_file_allowlist.js` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.9995`
-- `final_framework_obfuscation_stability_suite/javascript/027_SAFE_hebrew_comments.js` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.9995`
-- `final_framework_obfuscation_stability_suite/javascript/028_BLIND_feature_count_helper.js` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `0.9995`
-- `final_framework_obfuscation_stability_suite/javascript/029_SAFE_multi_query_file.js` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.9995`
-- `final_framework_obfuscation_stability_suite/javascript/031_SAFE_only_comments.js` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9294`
-- `final_framework_obfuscation_stability_suite/javascript/032_SAFE_broken_syntax_no_crash.js` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9294`
-- `final_framework_obfuscation_stability_suite/php/049_SAFE_laravel_db_select_bindings.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
-- `final_framework_obfuscation_stability_suite/php/051_SAFE_pdo_querybuilder_decoys.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
-- `final_framework_obfuscation_stability_suite/php/053_BLIND_mysqli_login.php` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
-- `final_framework_obfuscation_stability_suite/php/054_SECOND_ORDER_pdo_saved_filter_helper.php` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`
-- `final_framework_obfuscation_stability_suite/php/055_SAFE_placeholder_list.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
-- `final_framework_obfuscation_stability_suite/php/057_SAFE_huge_pdo_repo.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
-- `final_framework_obfuscation_stability_suite/php/058_SECOND_ORDER_huge_stored_sql.php` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`
-- `final_framework_obfuscation_stability_suite/php/059_SAFE_hebrew_comments.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
-- `final_framework_obfuscation_stability_suite/php/060_BLIND_permission_fetch_assoc.php` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
-- `final_framework_obfuscation_stability_suite/php/061_SAFE_multi_query_file.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
-- `final_framework_obfuscation_stability_suite/php/063_SAFE_only_comments.php` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9294`
-- `final_framework_obfuscation_stability_suite/php/064_SAFE_broken_syntax_no_crash.php` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9294`
-- `final_framework_obfuscation_stability_suite/python/001_SAFE_django_raw_params_order_allowlist.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9294`
-- `final_framework_obfuscation_stability_suite/python/003_BLIND_django_permission_exists.py` expected `VULNERABLE / BLIND` got `VULNERABLE / NONE` risk `0.9959`
-- `final_framework_obfuscation_stability_suite/python/005_SAFE_sqlalchemy_text_params.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9507`
-- `final_framework_obfuscation_stability_suite/python/006_IN_BAND_sqlalchemy_text_fstring.py` expected `VULNERABLE / IN_BAND` got `VULNERABLE / SECOND_ORDER` risk `1.0`
-- `final_framework_obfuscation_stability_suite/python/007_SAFE_obfuscated_params_builder.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9507`
-- `final_framework_obfuscation_stability_suite/python/008_IN_BAND_obfuscated_alias_execute.py` expected `VULNERABLE / IN_BAND` got `VULNERABLE / BLIND` risk `0.9507`
-- `final_framework_obfuscation_stability_suite/python/009_SAFE_huge_repository_one_thousand_lines.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9294`
-- `final_framework_obfuscation_stability_suite/python/010_SECOND_ORDER_huge_stored_sql_late_sink.py` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / NONE` risk `0.9947`
-- `final_framework_obfuscation_stability_suite/python/011_SAFE_broken_looking_comments_hebrew.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9507`
-- `final_framework_obfuscation_stability_suite/python/012_BLIND_helper_returns_bool.py` expected `VULNERABLE / BLIND` got `VULNERABLE / NONE` risk `0.997`
-- `final_framework_obfuscation_stability_suite/python/013_SAFE_multi_query_same_file.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9507`
-- `final_framework_obfuscation_stability_suite/python/014_IN_BAND_multi_query_one_unsafe.py` expected `VULNERABLE / IN_BAND` got `VULNERABLE / BLIND` risk `0.9507`
-- `final_framework_obfuscation_stability_suite/python/015_SAFE_empty_logic_file.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9294`
-- `final_framework_obfuscation_stability_suite/python/016_SAFE_broken_syntax_no_crash.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9182`
+- `final_framework_obfuscation_stability_suite/java/033_SAFE_spring_jdbctemplate_params.java` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.995`
+- `final_framework_obfuscation_stability_suite/java/035_SAFE_jpa_native_query_params.java` expected `SAFE / NONE` got `VULNERABLE / SECOND_ORDER` risk `0.9798`
+- `final_framework_obfuscation_stability_suite/java/036_IN_BAND_jpa_native_query_concat.java` expected `VULNERABLE / IN_BAND` got `VULNERABLE / SECOND_ORDER` risk `0.9798`
+- `final_framework_obfuscation_stability_suite/java/038_SECOND_ORDER_helper_return_fragment.java` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `0.9997`
+- `final_framework_obfuscation_stability_suite/java/047_SAFE_only_comments.java` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9932`
+- `final_framework_obfuscation_stability_suite/javascript/018_IN_BAND_sequelize_template_raw.js` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.0001`
+- `final_framework_obfuscation_stability_suite/javascript/020_IN_BAND_knex_raw_order.js` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.0018`
+- `final_framework_obfuscation_stability_suite/javascript/024_IN_BAND_exec_template_alias.js` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.0266`
+- `final_framework_obfuscation_stability_suite/javascript/026_SECOND_ORDER_huge_stored_query.js` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`
+- `final_framework_obfuscation_stability_suite/javascript/028_BLIND_feature_count_helper.js` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
+- `final_framework_obfuscation_stability_suite/javascript/031_SAFE_only_comments.js` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `1.0`
+- `final_framework_obfuscation_stability_suite/php/058_SECOND_ORDER_huge_stored_sql.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.4907`
+- `final_framework_obfuscation_stability_suite/php/062_IN_BAND_multi_query_one_unsafe.php` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.4907`
+- `final_framework_obfuscation_stability_suite/php/063_SAFE_only_comments.php` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9975`
+- `final_framework_obfuscation_stability_suite/python/005_SAFE_sqlalchemy_text_params.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9932`
+- `final_framework_obfuscation_stability_suite/python/007_SAFE_obfuscated_params_builder.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9932`
+- `final_framework_obfuscation_stability_suite/python/008_IN_BAND_obfuscated_alias_execute.py` expected `VULNERABLE / IN_BAND` got `VULNERABLE / BLIND` risk `0.9932`
+- `final_framework_obfuscation_stability_suite/python/010_SECOND_ORDER_huge_stored_sql_late_sink.py` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`
+- `final_framework_obfuscation_stability_suite/python/011_SAFE_broken_looking_comments_hebrew.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9932`
+- `final_framework_obfuscation_stability_suite/python/013_SAFE_multi_query_same_file.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9932`
+- `final_framework_obfuscation_stability_suite/python/014_IN_BAND_multi_query_one_unsafe.py` expected `VULNERABLE / IN_BAND` got `VULNERABLE / BLIND` risk `0.9932`
+- `final_framework_obfuscation_stability_suite/python/016_SAFE_broken_syntax_no_crash.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.9911`
