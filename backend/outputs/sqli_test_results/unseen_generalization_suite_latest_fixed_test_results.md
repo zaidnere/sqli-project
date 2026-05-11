@@ -40,12 +40,12 @@
 | 32 | `python/032_SECOND_ORDER_unseen_case_fexeedd.py` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
 | 33 | `javascript/033_SAFE_unseen_case_hzrgino.js` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
 | 34 | `javascript/034_SAFE_unseen_case_bnagwhn.js` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
-| 35 | `javascript/035_SAFE_unseen_case_qxtzpuc.js` | SAFE / NONE | SAFE / NONE | 0.0008 | ✅ |
+| 35 | `javascript/035_SAFE_unseen_case_qxtzpuc.js` | SAFE / NONE | SAFE / NONE | 0.0006 | ✅ |
 | 36 | `javascript/036_SAFE_unseen_case_qpkxyar.js` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
 | 37 | `javascript/037_SAFE_unseen_case_zqxcycv.js` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
-| 38 | `javascript/038_SAFE_unseen_case_kzpozfl.js` | SAFE / NONE | SAFE / NONE | 0.0001 | ✅ |
+| 38 | `javascript/038_SAFE_unseen_case_kzpozfl.js` | SAFE / NONE | SAFE / NONE |  | ✅ |
 | 39 | `javascript/039_SAFE_unseen_case_xsccfhj.js` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 40 | `javascript/040_SAFE_unseen_case_fhkdske.js` | SAFE / NONE | SAFE / NONE | 0.0001 | ✅ |
+| 40 | `javascript/040_SAFE_unseen_case_fhkdske.js` | SAFE / NONE | SAFE / NONE | 0.0004 | ✅ |
 | 41 | `javascript/041_IN_BAND_unseen_case_pckoedw.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
 | 42 | `javascript/042_IN_BAND_unseen_case_yxxdisb.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
 | 43 | `javascript/043_IN_BAND_unseen_case_rdkttbs.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
@@ -126,11 +126,11 @@
 | 118 | `php/118_BLIND_unseen_case_fqsyywl.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
 | 119 | `php/119_BLIND_unseen_case_tvapbfk.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
 | 120 | `php/120_BLIND_unseen_case_ztkdkie.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
-| 121 | `php/121_SECOND_ORDER_unseen_case_lexrhyc.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
-| 122 | `php/122_SECOND_ORDER_unseen_case_omrxhis.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
-| 123 | `php/123_SECOND_ORDER_unseen_case_rkjondg.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
-| 124 | `php/124_SECOND_ORDER_unseen_case_vyblmyh.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
-| 125 | `php/125_SECOND_ORDER_unseen_case_phhiwve.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
-| 126 | `php/126_SECOND_ORDER_unseen_case_zouwsvk.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
-| 127 | `php/127_SECOND_ORDER_unseen_case_dvzbrpi.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
-| 128 | `php/128_SECOND_ORDER_unseen_case_mmjsrbp.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
+| 121 | `php/121_SECOND_ORDER_unseen_case_lexrhyc.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
+| 122 | `php/122_SECOND_ORDER_unseen_case_omrxhis.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
+| 123 | `php/123_SECOND_ORDER_unseen_case_rkjondg.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
+| 124 | `php/124_SECOND_ORDER_unseen_case_vyblmyh.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
+| 125 | `php/125_SECOND_ORDER_unseen_case_phhiwve.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
+| 126 | `php/126_SECOND_ORDER_unseen_case_zouwsvk.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
+| 127 | `php/127_SECOND_ORDER_unseen_case_dvzbrpi.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
+| 128 | `php/128_SECOND_ORDER_unseen_case_mmjsrbp.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |

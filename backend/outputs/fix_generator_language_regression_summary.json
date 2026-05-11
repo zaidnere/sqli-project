@@ -1,0 +1,9 @@
+{
+  "suite": "fix_generator_language_aware_regression_v2",
+  "totalCases": 6,
+  "passed": 6,
+  "failed": 0,
+  "accuracyPct": 100.0,
+  "csv": "outputs\\fix_generator_language_regression_results.csv",
+  "json": "outputs\\fix_generator_language_regression_summary.json"
+}

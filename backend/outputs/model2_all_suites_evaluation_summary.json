@@ -1,0 +1,370 @@
+{
+  "suite": "model2_all_suites_evaluation_v1",
+  "note": "Combined evaluation. Does not modify models/suites; uses existing runners and official Model 1 output for full pipeline.",
+  "runs": [
+    {
+      "label": "Fix generator language regression",
+      "returncode": 0
+    },
+    {
+      "label": "Full pipeline strict from official Model 1 results",
+      "returncode": 0
+    }
+  ],
+  "languageRegression": {
+    "suite": "fix_generator_language_aware_regression_v2",
+    "totalCases": 6,
+    "passed": 6,
+    "failed": 0,
+    "accuracyPct": 100.0,
+    "csv": "outputs\\fix_generator_language_regression_results.csv",
+    "json": "outputs\\fix_generator_language_regression_summary.json"
+  },
+  "dedicatedModel2FixAll": {
+    "suite": "model2_fix_cases_direct_zip_v4_output_by_type",
+    "suiteType": "all",
+    "totalCases": 24,
+    "checkedCases": 24,
+    "passedChecked": 23,
+    "failedChecked": 1,
+    "crashedCases": 0,
+    "modelExpectedChecked": 24,
+    "modelExpectedPassed": 23,
+    "modelExpectedFailed": 1,
+    "finalExpectedChecked": 24,
+    "finalExpectedPassed": 23,
+    "finalExpectedFailed": 1,
+    "contentChecked": 24,
+    "contentPassed": 23,
+    "contentFailed": 1,
+    "modelFixTypeCounts": {
+      "A": 9,
+      "B": 8,
+      "C": 3,
+      "D": 4
+    },
+    "finalFixTypeCounts": {
+      "A": 9,
+      "B": 8,
+      "C": 3,
+      "D": 4
+    },
+    "suiteSources": {
+      "diagnostic.json": 21,
+      "quick.json": 3
+    },
+    "csv": "outputs\\model2_fix_cases_all_results.csv",
+    "json": "outputs\\model2_fix_cases_all_summary.json"
+  },
+  "dedicatedModel2FixDiagnostic": {
+    "suite": "model2_fix_cases_direct_zip_v4_output_by_type",
+    "suiteType": "diagnostic",
+    "totalCases": 21,
+    "checkedCases": 21,
+    "passedChecked": 20,
+    "failedChecked": 1,
+    "crashedCases": 0,
+    "modelExpectedChecked": 21,
+    "modelExpectedPassed": 20,
+    "modelExpectedFailed": 1,
+    "finalExpectedChecked": 21,
+    "finalExpectedPassed": 20,
+    "finalExpectedFailed": 1,
+    "contentChecked": 21,
+    "contentPassed": 20,
+    "contentFailed": 1,
+    "modelFixTypeCounts": {
+      "A": 8,
+      "B": 6,
+      "C": 3,
+      "D": 4
+    },
+    "finalFixTypeCounts": {
+      "A": 8,
+      "B": 6,
+      "C": 3,
+      "D": 4
+    },
+    "suiteSources": {
+      "diagnostic.json": 21
+    },
+    "csv": "outputs\\model2_fix_cases_diagnostic_results.csv",
+    "json": "outputs\\model2_fix_cases_diagnostic_summary.json"
+  },
+  "fullPipelineStrict": {
+    "suite": "full_pipeline_from_official_model1_results_library_aware_strict_v3",
+    "note": "Uses official Model 1 output CSVs as input to Model 2. Expected Model 2 A/B/C/D labels are inferred from detection suites; strictFix validates the actual generated repair structure and is language/library-aware, not only the class label.",
+    "sourceSuites": [
+      "adversarial_real_world_sqli_challenge_suite",
+      "enterprise_realistic_sqli_final_suite",
+      "final_framework_obfuscation_stability_suite",
+      "hard_mixed_sqli_challenge_suite",
+      "known_good_sqli_detection_suite",
+      "mega_sqli_debug_suite",
+      "realistic_long_sqli_suite",
+      "root_cause_attack_type_diagnostic_suite",
+      "stable_expected_detection_suite",
+      "targeted_next_debug_suite",
+      "unseen_generalization_suite_latest_fixed",
+      "v18_provenance_overfit_guard_suite",
+      "v18_remaining_edge_focused_suite"
+    ],
+    "skipped": [
+      "unseen_generalization_suite: skipped because matching suite ZIP was not found under test_suites_model2_detection",
+      "unseen_generalization_suite_latest: skipped because matching suite ZIP was not found under test_suites_model2_detection",
+      "unseen_generalization_suite_v4: skipped because matching suite ZIP was not found under test_suites_model2_detection"
+    ],
+    "totalRows": 594,
+    "expectedSafe": 209,
+    "expectedVulnerable": 385,
+    "model1OfficialPassed": 594,
+    "model1OfficialFailed": 0,
+    "model1OfficialAccuracyPct": 100.0,
+    "model2EvaluatedExpectedVulnerable": 385,
+    "model2ModelFixPassed": 382,
+    "model2ModelFixFailed": 3,
+    "model2ModelFixAccuracyPct": 99.22,
+    "model2FinalFixPassed": 382,
+    "model2FinalFixFailed": 3,
+    "model2FinalFixAccuracyPct": 99.22,
+    "model2StrictFixPassed": 382,
+    "model2StrictFixFailed": 3,
+    "model2StrictFixAccuracyPct": 99.22,
+    "vulnerableEndToEndStrictPassed": 382,
+    "vulnerableEndToEndStrictFailed": 3,
+    "vulnerableEndToEndStrictAccuracyPct": 99.22,
+    "fullPipelineStrictPassed": 591,
+    "fullPipelineStrictFailed": 3,
+    "fullPipelineStrictAccuracyPct": 99.49,
+    "crashedCases": 0,
+    "model2ModelFixTypeCounts": {
+      "A": 232,
+      "B": 42,
+      "C": 6,
+      "D": 105,
+      "": 0
+    },
+    "model2FinalFixTypeCounts": {
+      "A": 232,
+      "B": 42,
+      "C": 6,
+      "D": 105,
+      "": 0
+    },
+    "failureStages": {
+      "model2_fix_classification": 3
+    },
+    "bySuite": {
+      "adversarial_real_world_sqli_challenge_suite": {
+        "totalRows": 32,
+        "expectedSafe": 12,
+        "expectedVulnerable": 20,
+        "model1OfficialPassed": 32,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 20,
+        "model2ModelPassed": 20,
+        "model2FinalPassed": 20,
+        "strictFixPassed": 20,
+        "fullSystemStrictPassed": 20,
+        "fullSystemStrictFailed": 0,
+        "crashedCases": 0
+      },
+      "enterprise_realistic_sqli_final_suite": {
+        "totalRows": 40,
+        "expectedSafe": 12,
+        "expectedVulnerable": 28,
+        "model1OfficialPassed": 40,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 28,
+        "model2ModelPassed": 26,
+        "model2FinalPassed": 26,
+        "strictFixPassed": 26,
+        "fullSystemStrictPassed": 26,
+        "fullSystemStrictFailed": 2,
+        "crashedCases": 0
+      },
+      "final_framework_obfuscation_stability_suite": {
+        "totalRows": 64,
+        "expectedSafe": 32,
+        "expectedVulnerable": 32,
+        "model1OfficialPassed": 64,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 32,
+        "model2ModelPassed": 32,
+        "model2FinalPassed": 32,
+        "strictFixPassed": 32,
+        "fullSystemStrictPassed": 32,
+        "fullSystemStrictFailed": 0,
+        "crashedCases": 0
+      },
+      "hard_mixed_sqli_challenge_suite": {
+        "totalRows": 80,
+        "expectedSafe": 20,
+        "expectedVulnerable": 60,
+        "model1OfficialPassed": 80,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 60,
+        "model2ModelPassed": 59,
+        "model2FinalPassed": 59,
+        "strictFixPassed": 59,
+        "fullSystemStrictPassed": 59,
+        "fullSystemStrictFailed": 1,
+        "crashedCases": 0
+      },
+      "known_good_sqli_detection_suite": {
+        "totalRows": 40,
+        "expectedSafe": 16,
+        "expectedVulnerable": 24,
+        "model1OfficialPassed": 40,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 24,
+        "model2ModelPassed": 24,
+        "model2FinalPassed": 24,
+        "strictFixPassed": 24,
+        "fullSystemStrictPassed": 24,
+        "fullSystemStrictFailed": 0,
+        "crashedCases": 0
+      },
+      "mega_sqli_debug_suite": {
+        "totalRows": 40,
+        "expectedSafe": 15,
+        "expectedVulnerable": 25,
+        "model1OfficialPassed": 40,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 25,
+        "model2ModelPassed": 25,
+        "model2FinalPassed": 25,
+        "strictFixPassed": 25,
+        "fullSystemStrictPassed": 25,
+        "fullSystemStrictFailed": 0,
+        "crashedCases": 0
+      },
+      "realistic_long_sqli_suite": {
+        "totalRows": 18,
+        "expectedSafe": 6,
+        "expectedVulnerable": 12,
+        "model1OfficialPassed": 18,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 12,
+        "model2ModelPassed": 12,
+        "model2FinalPassed": 12,
+        "strictFixPassed": 12,
+        "fullSystemStrictPassed": 12,
+        "fullSystemStrictFailed": 0,
+        "crashedCases": 0
+      },
+      "root_cause_attack_type_diagnostic_suite": {
+        "totalRows": 32,
+        "expectedSafe": 11,
+        "expectedVulnerable": 21,
+        "model1OfficialPassed": 32,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 21,
+        "model2ModelPassed": 21,
+        "model2FinalPassed": 21,
+        "strictFixPassed": 21,
+        "fullSystemStrictPassed": 21,
+        "fullSystemStrictFailed": 0,
+        "crashedCases": 0
+      },
+      "stable_expected_detection_suite": {
+        "totalRows": 40,
+        "expectedSafe": 18,
+        "expectedVulnerable": 22,
+        "model1OfficialPassed": 40,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 22,
+        "model2ModelPassed": 22,
+        "model2FinalPassed": 22,
+        "strictFixPassed": 22,
+        "fullSystemStrictPassed": 22,
+        "fullSystemStrictFailed": 0,
+        "crashedCases": 0
+      },
+      "targeted_next_debug_suite": {
+        "totalRows": 32,
+        "expectedSafe": 16,
+        "expectedVulnerable": 16,
+        "model1OfficialPassed": 32,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 16,
+        "model2ModelPassed": 16,
+        "model2FinalPassed": 16,
+        "strictFixPassed": 16,
+        "fullSystemStrictPassed": 16,
+        "fullSystemStrictFailed": 0,
+        "crashedCases": 0
+      },
+      "unseen_generalization_suite_latest_fixed": {
+        "totalRows": 128,
+        "expectedSafe": 32,
+        "expectedVulnerable": 96,
+        "model1OfficialPassed": 128,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 96,
+        "model2ModelPassed": 96,
+        "model2FinalPassed": 96,
+        "strictFixPassed": 96,
+        "fullSystemStrictPassed": 96,
+        "fullSystemStrictFailed": 0,
+        "crashedCases": 0
+      },
+      "v18_provenance_overfit_guard_suite": {
+        "totalRows": 20,
+        "expectedSafe": 7,
+        "expectedVulnerable": 13,
+        "model1OfficialPassed": 20,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 13,
+        "model2ModelPassed": 13,
+        "model2FinalPassed": 13,
+        "strictFixPassed": 13,
+        "fullSystemStrictPassed": 13,
+        "fullSystemStrictFailed": 0,
+        "crashedCases": 0
+      },
+      "v18_remaining_edge_focused_suite": {
+        "totalRows": 28,
+        "expectedSafe": 12,
+        "expectedVulnerable": 16,
+        "model1OfficialPassed": 28,
+        "model1OfficialFailed": 0,
+        "model2Evaluated": 16,
+        "model2ModelPassed": 16,
+        "model2FinalPassed": 16,
+        "strictFixPassed": 16,
+        "fullSystemStrictPassed": 16,
+        "fullSystemStrictFailed": 0,
+        "crashedCases": 0
+      }
+    },
+    "csv": "outputs\\full_pipeline_from_model1_results_official_model1_results_strict_results.csv",
+    "json": "outputs\\full_pipeline_from_model1_results_official_model1_results_strict_summary.json"
+  },
+  "failureReview": {
+    "totalFailures": 3,
+    "byStage": {
+      "model2_fix_classification": 3
+    },
+    "bySuite": {
+      "enterprise_realistic_sqli_final_suite": 2,
+      "hard_mixed_sqli_challenge_suite": 1
+    },
+    "byLanguage": {
+      "python": 2,
+      "javascript": 1
+    },
+    "byExpectedToModel": {
+      "D->": 3
+    },
+    "byExpectedToFinal": {
+      "D->": 3
+    },
+    "csv": "outputs\\model2_all_suites_failure_review.csv"
+  },
+  "outputs": {
+    "summary": "outputs\\model2_all_suites_evaluation_summary.json",
+    "report": "outputs\\model2_all_suites_evaluation_report.md",
+    "failureReviewCsv": "outputs\\model2_all_suites_failure_review.csv"
+  }
+}

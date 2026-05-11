@@ -1,8 +1,8 @@
 {
-  "model2Version": "model2_fix_context_features_v2",
-  "architecture": "shared frozen Model1 embedding + masked avg pool + language + attack type + context evidence features + dense softmax",
-  "inputDim": 90,
-  "hidden": 128,
+  "model2Version": "model2_fix_attack_all_v6_targeted_v7_retrain",
+  "architecture": "shared frozen Model1 embedding + masked avg pool + language + attack type + v6/v7 evidence features + dense softmax",
+  "inputDim": 112,
+  "hidden": 224,
   "fixLabels": {
     "0": "A",
     "1": "B",
@@ -15,6 +15,18 @@
     "C": "ORM / Query Builder Migration",
     "D": "Second-Order Mitigation"
   },
-  "evidenceDim": 18,
-  "bestEpoch": 3
+  "languages": [
+    "python",
+    "javascript",
+    "java",
+    "php"
+  ],
+  "attackTypes": [
+    "NONE",
+    "IN_BAND",
+    "BLIND",
+    "SECOND_ORDER"
+  ],
+  "evidenceDim": 40,
+  "bestEpoch": 1
 }

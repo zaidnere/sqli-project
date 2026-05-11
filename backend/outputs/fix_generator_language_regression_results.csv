@@ -1,0 +1,66 @@
+id,language,expected_fix_type,got_fix_type,passed,failed_checks,fixed_preview,fixed_code
+python_sqlite_invoice_multivalue_context_preserved,python,A,A,True,,"# Fix: use parameterized query — preserve the original SQL logic and bind all user values\nimport sqlite3\n\nclass InvoiceService:\n    def __init__(self, db_path):\n        self.db_path = db_path\n\n    def can_view_invoice(self, user_email: str, invoice_id: str, tenant_id: int) -> bool:\n        conn = sqlite3.connect(self.db_path)\n        cur = conn.cursor()\n        sql = (\n            ""SELECT COUNT(*) ""\n            ""FROM invoice_acl a ""\n            ""JOIN users u ON u.id = a.user_id ""\n            ""WHERE a.tenant_id = ? ""\n            ""AND u.email = ? ""\n            ""AND a.invoice_id = ? ""\n            ""AND a.can_view = 1""\n        )\n        cur.execute(sql, (tenant_id, user_email, invoice_id))\n        count = cur.fetchone()[0]\n        conn.close()\n        allowed = count > 0\n        return allowed\n","# Fix: use parameterized query — preserve the original SQL logic and bind all user values
+import sqlite3
+
+class InvoiceService:
+    def __init__(self, db_path):
+        self.db_path = db_path
+
+    def can_view_invoice(self, user_email: str, invoice_id: str, tenant_id: int) -> bool:
+        conn = sqlite3.connect(self.db_path)
+        cur = conn.cursor()
+        sql = (
+            ""SELECT COUNT(*) ""
+            ""FROM invoice_acl a ""
+            ""JOIN users u ON u.id = a.user_id ""
+            ""WHERE a.tenant_id = ? ""
+            ""AND u.email = ? ""
+            ""AND a.invoice_id = ? ""
+            ""AND a.can_view = 1""
+        )
+        cur.execute(sql, (tenant_id, user_email, invoice_id))
+        count = cur.fetchone()[0]
+        conn.close()
+        allowed = count > 0
+        return allowed
+"
+php_mysqli_optional_filters_keep_mysqli,php,A,A,True,,"// Fix: use mysqli prepared statements with bound parameters\n$sql = ""SELECT id, tenant_id, customer_name, email, status "" .\n       ""FROM customers WHERE tenant_id = ?"";\n$params = [$tenantId];\n$types = ""i"";\n\nif ($status !== null && trim($status) !== """") {\n    $sql .= "" AND status = ?"";\n    $params[] = $status;\n    $types .= ""s"";\n}\n\nif ($keyword !== null && trim($keyword) !== """") {\n    $clean = ""%"" . strtolower(trim($keyword)) . ""%"";\n    $sql .= "" AND (LOWER(customer_name) LIKE ? OR LOWER(email) LIKE ?)"";\n    $params[] = $clean;\n    $params[] = $clean;\n    $types .= ""ss"";\n}\n\n$stmt = $this->conn->prepare($sql);\n$stmt->bind_param($types, ...$params);\n$stmt->execute();\n$result = $stmt->get_result();","// Fix: use mysqli prepared statements with bound parameters
+$sql = ""SELECT id, tenant_id, customer_name, email, status "" .
+       ""FROM customers WHERE tenant_id = ?"";
+$params = [$tenantId];
+$types = ""i"";
+
+if ($status !== null && trim($status) !== """") {
+    $sql .= "" AND status = ?"";
+    $params[] = $status;
+    $types .= ""s"";
+}
+
+if ($keyword !== null && trim($keyword) !== """") {
+    $clean = ""%"" . strtolower(trim($keyword)) . ""%"";
+    $sql .= "" AND (LOWER(customer_name) LIKE ? OR LOWER(email) LIKE ?)"";
+    $params[] = $clean;
+    $params[] = $clean;
+    $types .= ""ss"";
+}
+
+$stmt = $this->conn->prepare($sql);
+$stmt->bind_param($types, ...$params);
+$stmt->execute();
+$result = $stmt->get_result();"
+php_pdo_stays_pdo,php,A,A,True,,"// Fix: use PDO prepared statements with bound parameters\n$sql = ""SELECT * FROM users WHERE email = ?"";\n$stmt = $pdo->prepare($sql);\n$stmt->execute([$email]);\nreturn $stmt->fetchAll();","// Fix: use PDO prepared statements with bound parameters
+$sql = ""SELECT * FROM users WHERE email = ?"";
+$stmt = $pdo->prepare($sql);
+$stmt->execute([$email]);
+return $stmt->fetchAll();"
+javascript_mysql2_uses_execute_array,javascript,A,A,True,,"// Fix: use a parameterized query with bound parameters\nconst sql = ""SELECT * FROM users WHERE email = ?"";\nreturn await db.query(sql, [email]);","// Fix: use a parameterized query with bound parameters
+const sql = ""SELECT * FROM users WHERE email = ?"";
+return await db.query(sql, [email]);"
+javascript_pg_uses_numbered_placeholders,javascript,A,A,True,,"// Fix: use pg parameterized query with numbered placeholders\nconst sql = ""SELECT * FROM users WHERE email = $1"";\nconst result = await client.query(sql, [email]);","// Fix: use pg parameterized query with numbered placeholders
+const sql = ""SELECT * FROM users WHERE email = $1"";
+const result = await client.query(sql, [email]);"
+java_jdbc_prepared_statement,java,A,A,True,,"// Fix: use JDBC PreparedStatement with bound parameters\nString sql = ""SELECT * FROM users WHERE email = ?"";\nPreparedStatement stmt = conn.prepareStatement(sql);\nstmt.setString(1, email);\nResultSet rs = stmt.executeQuery();","// Fix: use JDBC PreparedStatement with bound parameters
+String sql = ""SELECT * FROM users WHERE email = ?"";
+PreparedStatement stmt = conn.prepareStatement(sql);
+stmt.setString(1, email);
+ResultSet rs = stmt.executeQuery();"

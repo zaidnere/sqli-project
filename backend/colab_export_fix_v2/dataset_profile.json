@@ -1,23 +1,23 @@
 {
-  "exporterVersion": "model2_context_features_v3",
-  "n_samples": 5120,
+  "exporterVersion": "model2_attack_all_v6",
+  "n_samples": 10240,
   "fix_counts": {
-    "A": 1280,
-    "B": 1280,
-    "C": 1280,
-    "D": 1280
+    "A": 2560,
+    "B": 2560,
+    "C": 2560,
+    "D": 2560
   },
   "language_counts": {
-    "python": 1280,
-    "javascript": 1280,
-    "java": 1280,
-    "php": 1280
+    "python": 2560,
+    "javascript": 2560,
+    "java": 2560,
+    "php": 2560
   },
   "attack_type_counts": {
     "NONE": 0,
-    "IN_BAND": 3526,
-    "BLIND": 314,
-    "SECOND_ORDER": 1280
+    "IN_BAND": 6933,
+    "BLIND": 747,
+    "SECOND_ORDER": 2560
   },
   "evidence_features": [
     "SQL_STRING",
@@ -37,9 +37,31 @@
     "VALUE_PARAMETER_CONTEXT",
     "IDENTIFIER_CONTEXT",
     "COMPLEX_BUILDER_CONTEXT",
-    "STORED_SQL_CONTEXT"
+    "STORED_SQL_CONTEXT",
+    "FRAMEWORK_RAW_CONTEXT",
+    "QUERY_HELPER_CONTEXT",
+    "PHP_VALUE_CONTEXT",
+    "TIME_BLIND_CONTEXT",
+    "RAW_ALIAS_CONTEXT",
+    "SECOND_ORDER_CONFIG_ORDER_CONTEXT",
+    "SIMPLE_VALUE_QUERY_CONTEXT",
+    "PHP_SCALAR_CONCAT_CONTEXT",
+    "VALUE_LIST_CONTEXT",
+    "LIMIT_OFFSET_CONTEXT",
+    "SIMPLE_FRAMEWORK_VALUE_CONTEXT",
+    "COMPLEX_LOOP_BUILDER_CONTEXT",
+    "SQL_FRAGMENT_COMPOSER_CONTEXT",
+    "DIRECT_STORED_EXEC_CONTEXT",
+    "PYTHON_SIMPLE_VALUE_CONCAT_CONTEXT",
+    "PYTHON_SANITIZED_LIKE_CONTEXT",
+    "PYTHON_EXEC_ALIAS_CONTEXT",
+    "JS_DIRECT_TEMPLATE_VALUE_CONTEXT",
+    "JS_REQUEST_SEGMENT_VALUE_CONTEXT",
+    "SEQUELIZE_RAW_TEMPLATE_CONTEXT",
+    "JPA_NATIVE_RAW_CONTEXT",
+    "DB_ROW_STORED_SQL_EXEC_CONTEXT"
   ],
-  "evidence_feature_count": 18,
+  "evidence_feature_count": 40,
   "output_files": [
     "training_data.npz",
     "vocabulary.json",
@@ -47,7 +69,19 @@
   ],
   "notes": [
     "Balanced by language and fix class.",
-    "Adds semantic context features for value parameters, identifiers, complex builders, and stored SQL fragments.",
-    "Model 1 remains frozen/read-only; this export does not modify Model 1."
+    "Attack-all calibration v6 targets A-vs-C overprediction, PHP scalar value SQLi, list/limit/offset value contexts, and stronger D stored-fragment contexts.",
+    "Model 1 remains frozen/read-only; this export does not modify Model 1.",
+    "Targeted v7 augmentation appends balanced hard cases without deleting the export folder.",
+    "Model 1 remains frozen/read-only; this augmentation does not modify Model 1.",
+    "Targeted v7 augmentation appends balanced hard cases without deleting the export folder.",
+    "Model 1 remains frozen/read-only; this augmentation does not modify Model 1."
+  ],
+  "augmentationVersion": "model2_targeted_failure_v7",
+  "added_samples": 1280,
+  "samples_per_class_language_extra": 80,
+  "targeted_failure_families": [
+    "Second-order saved widget/config/cache/query fragments should classify as D",
+    "Obfuscated execute aliases with direct value SQLi should classify as A",
+    "B/C anchor cases preserve identifier whitelist and complex-builder boundaries"
   ]
 }
