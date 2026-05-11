@@ -1,16 +1,23 @@
 {
-  "n_samples": 1920,
+  "exporterVersion": "model2_context_features_v3",
+  "n_samples": 3840,
   "fix_counts": {
-    "A": 480,
-    "B": 480,
-    "C": 480,
-    "D": 480
+    "A": 960,
+    "B": 960,
+    "C": 960,
+    "D": 960
   },
   "language_counts": {
-    "python": 480,
-    "javascript": 480,
-    "java": 480,
-    "php": 480
+    "python": 960,
+    "javascript": 960,
+    "java": 960,
+    "php": 960
+  },
+  "attack_type_counts": {
+    "NONE": 0,
+    "IN_BAND": 2644,
+    "BLIND": 236,
+    "SECOND_ORDER": 960
   },
   "evidence_features": [
     "SQL_STRING",
@@ -26,6 +33,21 @@
     "ORDER_BY_DYNAMIC",
     "TABLE_NAME_DYNAMIC",
     "RAW_VALUE_CONCAT",
-    "HAS_EXECUTION_SINK"
+    "HAS_EXECUTION_SINK",
+    "VALUE_PARAMETER_CONTEXT",
+    "IDENTIFIER_CONTEXT",
+    "COMPLEX_BUILDER_CONTEXT",
+    "STORED_SQL_CONTEXT"
+  ],
+  "evidence_feature_count": 18,
+  "output_files": [
+    "training_data.npz",
+    "vocabulary.json",
+    "dataset_profile.json"
+  ],
+  "notes": [
+    "Balanced by language and fix class.",
+    "Adds semantic context features for value parameters, identifiers, complex builders, and stored SQL fragments.",
+    "Model 1 remains frozen/read-only; this export does not modify Model 1."
   ]
 }

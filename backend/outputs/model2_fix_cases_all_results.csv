@@ -1,0 +1,91 @@
+﻿suiteSource,id,language,attackType,expectedModelFixType,modelFixType,modelPass,expectedFinalFixType,finalFixType,finalPass,contentPass,passed,confidence,allProbabilities,missingMustContain,presentMustNotContain,error,fixedCode
+diagnostic.json,python_A_where_value_concat_parameterized,python,IN_BAND,A,A,True,A,A,True,True,True,0.6307,"{""A"": 0.6307, ""B"": 0.1879, ""C"": 0.1052, ""D"": 0.0762}",,,,"# Fix: use parameterized query — never interpolate user input into SQL
+query = ""SELECT * FROM users WHERE id = ?""
+cursor.execute(query, (uid,))"
+diagnostic.json,python_A_where_value_fstring_parameterized,python,IN_BAND,A,A,True,A,A,True,False,False,0.5801,"{""A"": 0.5801, ""B"": 0.1697, ""C"": 0.1771, ""D"": 0.0731}","WHERE name = ? | cursor.execute(query, (name,))",,,"# Fix: use parameterized query — never interpolate user input into SQL
+query = ""SELECT * FROM users WHERE name = ""
+cursor.execute(query, (GET,))"
+diagnostic.json,python_A_blind_count_value_parameterized,python,BLIND,A,A,True,A,A,True,True,True,0.6492,"{""A"": 0.6492, ""B"": 0.15, ""C"": 0.0916, ""D"": 0.1091}",,,,"# Fix: use parameterized query — never interpolate user input into SQL
+query = ""SELECT count(*) FROM users WHERE id = ?""
+cursor.execute(query, (uid,))"
+diagnostic.json,javascript_A_where_value_concat_parameterized,javascript,IN_BAND,A,A,True,A,A,True,True,True,0.594,"{""A"": 0.594, ""B"": 0.1791, ""C"": 0.1083, ""D"": 0.1186}",,,,"// Fix: use parameterized query
+const query = ""SELECT * FROM users WHERE id = ?"";
+return db.all(query, [id]);"
+diagnostic.json,javascript_A_where_value_template_parameterized,javascript,IN_BAND,A,A,True,A,A,True,True,True,0.6287,"{""A"": 0.6287, ""B"": 0.1685, ""C"": 0.1166, ""D"": 0.0862}",,,,"// Fix: use parameterized query
+const query = ""SELECT * FROM users WHERE email = ?"";
+return db.all(query, [email]);"
+diagnostic.json,php_A_where_value_concat_prepared_statement,php,IN_BAND,A,A,True,A,A,True,True,True,0.5755,"{""A"": 0.5755, ""B"": 0.1778, ""C"": 0.1393, ""D"": 0.1074}",,,,"// Fix: use PDO prepared statements
+$stmt = $pdo->prepare(""SELECT * FROM users WHERE id = ?"");
+$stmt->execute([$id]);"
+diagnostic.json,java_A_where_value_concat_prepared_statement,java,IN_BAND,A,A,True,A,A,True,True,True,0.6007,"{""A"": 0.6007, ""B"": 0.1696, ""C"": 0.14, ""D"": 0.0897}",,,,"// Fix: use PreparedStatement
+PreparedStatement stmt = conn.prepareStatement(""SELECT * FROM users WHERE id = ?"");
+stmt.setString(1, id);
+ResultSet rs = stmt.executeQuery();"
+diagnostic.json,python_B_order_by_identifier_whitelist,python,IN_BAND,B,B,True,B,B,True,True,True,0.6659,"{""A"": 0.1889, ""B"": 0.6659, ""C"": 0.0885, ""D"": 0.0568}",,,,"    # Fix: whitelist allowed ORDER BY columns — identifiers cannot be parameterized
+    ALLOWED_COLUMNS = {""id"", ""name"", ""email"", ""created_at""}
+    if sort_column not in ALLOWED_COLUMNS:
+        raise ValueError(f""Invalid sort column: {sort_column}"")
+    query = f""SELECT * FROM users ORDER BY {sort_column}""
+    return cursor.execute(query).fetchall()"
+diagnostic.json,python_B_table_identifier_whitelist,python,IN_BAND,B,B,True,B,B,True,True,True,0.6719,"{""A"": 0.1853, ""B"": 0.6719, ""C"": 0.095, ""D"": 0.0478}",,,,"# Fix: whitelist allowed table names — identifiers cannot be parameterized
+ALLOWED_TABLES = {""users"", ""orders"", ""products""}
+if table not in ALLOWED_TABLES:
+    raise ValueError(f""Invalid table name: {table}"")
+query = f""SELECT * FROM {table}""
+return cursor.execute(query).fetchall()"
+diagnostic.json,javascript_B_order_by_identifier_whitelist,javascript,IN_BAND,B,B,True,B,B,True,True,True,0.6802,"{""A"": 0.1637, ""B"": 0.6802, ""C"": 0.0816, ""D"": 0.0744}",,,,"// Fix: whitelist allowed ORDER BY columns — identifiers cannot be parameterized
+const ALLOWED_COLUMNS = new Set(['id','name','email','created_at']);
+if (!ALLOWED_COLUMNS.has(sortColumn)) throw new Error('Invalid sort column');
+const query = `SELECT * FROM users ORDER BY ${sortColumn}`;
+return db.all(query);"
+diagnostic.json,javascript_B_table_identifier_whitelist,javascript,IN_BAND,B,B,True,B,B,True,False,False,0.6611,"{""A"": 0.1774, ""B"": 0.6611, ""C"": 0.0876, ""D"": 0.0739}",ALLOWED_COLUMNS | ALLOWED_COLUMNS.has(tableName),,,"// Fix: whitelist allowed table names — identifiers cannot be parameterized
+const ALLOWED_TABLES = new Set(['users','orders','products']);
+if (!ALLOWED_TABLES.has(tableName)) throw new Error('Invalid table name');
+const query = `SELECT * FROM ${tableName}`;
+return db.all(query);"
+diagnostic.json,php_B_order_by_identifier_whitelist,php,IN_BAND,B,B,True,B,B,True,True,True,0.57,"{""A"": 0.1957, ""B"": 0.57, ""C"": 0.1578, ""D"": 0.0765}",,,,"// Fix: whitelist allowed ORDER BY columns — identifiers cannot be parameterized
+$allowedColumns = ['id','name','email','created_at'];
+if (!in_array($sort, $allowedColumns, true)) { throw new InvalidArgumentException('Invalid sort column'); }
+$sql = ""SELECT * FROM users ORDER BY "" . $sort;
+$stmt = $pdo->query($sql);"
+diagnostic.json,java_B_order_by_identifier_whitelist,java,IN_BAND,B,B,True,B,B,True,True,True,0.6482,"{""A"": 0.1545, ""B"": 0.6482, ""C"": 0.1292, ""D"": 0.0681}",,,,"// Fix: whitelist allowed ORDER BY columns — identifiers cannot be parameterized
+Set<String> allowedColumns = Set.of(""id"",""name"",""email"",""created_at"");
+if (!allowedColumns.contains(sortColumn)) throw new IllegalArgumentException(""Invalid sort column"");
+String sql = ""SELECT * FROM users ORDER BY "" + sortColumn;
+ResultSet rs = conn.createStatement().executeQuery(sql);"
+diagnostic.json,python_C_complex_dynamic_builder_orm_migration,python,IN_BAND,C,A,False,C,A,False,False,False,0.3592,"{""A"": 0.3592, ""B"": 0.3438, ""C"": 0.216, ""D"": 0.081}",# Fix C | ORM/query builder,,,"# Fix: use parameterized query — never interpolate user input into SQL
+query = ""SELECT * FROM table WHERE column = ?""
+cursor.execute(query, (json,))"
+diagnostic.json,javascript_C_complex_raw_builder_query_builder_migration,javascript,IN_BAND,C,B,False,C,B,False,False,False,0.3085,"{""A"": 0.2602, ""B"": 0.3085, ""C"": 0.2781, ""D"": 0.1532}",# Fix C | ORM/query builder,,,"// Fix: whitelist allowed ORDER BY columns — identifiers cannot be parameterized
+const ALLOWED_COLUMNS = new Set(['id','name','email','created_at']);
+if (!ALLOWED_COLUMNS.has(body)) throw new Error('Invalid sort column');
+const query = `SELECT * FROM users ORDER BY ${body}`;
+return db.all(query);"
+diagnostic.json,java_C_complex_dynamic_sql_builder_orm_migration,java,IN_BAND,C,A,False,C,A,False,False,False,0.3233,"{""A"": 0.3233, ""B"": 0.3023, ""C"": 0.2768, ""D"": 0.0976}",# Fix C | ORM/query builder,,,"// Fix: use PreparedStatement
+PreparedStatement stmt = conn.prepareStatement(""SELECT * FROM table WHERE column = ?"");
+stmt.setString(1, executeQuery);
+ResultSet rs = stmt.executeQuery();"
+diagnostic.json,php_C_complex_dynamic_sql_builder_query_builder_migration,php,IN_BAND,C,B,False,C,B,False,False,False,0.3063,"{""A"": 0.2965, ""B"": 0.3063, ""C"": 0.2842, ""D"": 0.113}",# Fix C | ORM/query builder,,,"// Fix: whitelist allowed ORDER BY columns — identifiers cannot be parameterized
+$allowedColumns = ['id','name','email','created_at'];
+if (!in_array($value, $allowedColumns, true)) { throw new InvalidArgumentException('Invalid sort column'); }
+$sql = ""SELECT * FROM users ORDER BY "" . $value;
+$stmt = $pdo->query($sql);"
+diagnostic.json,python_D_second_order_saved_filter_mitigation,python,SECOND_ORDER,D,D,True,D,D,True,True,True,0.6707,"{""A"": 0.1491, ""B"": 0.0998, ""C"": 0.0804, ""D"": 0.6707}",,,,# Fix D: do not execute SQL loaded from DB/config/user storage. Rebuild SQL from trusted static templates.
+diagnostic.json,javascript_D_second_order_cache_filter_mitigation,javascript,SECOND_ORDER,D,D,True,D,D,True,True,True,0.8078,"{""A"": 0.0764, ""B"": 0.0638, ""C"": 0.0519, ""D"": 0.8078}",,,,# Fix D: do not execute SQL loaded from DB/config/user storage. Rebuild SQL from trusted static templates.
+diagnostic.json,php_D_second_order_loaded_filter_mitigation,php,SECOND_ORDER,D,D,True,D,D,True,True,True,0.6098,"{""A"": 0.1546, ""B"": 0.1061, ""C"": 0.1295, ""D"": 0.6098}",,,,# Fix D: do not execute SQL loaded from DB/config/user storage. Rebuild SQL from trusted static templates.
+diagnostic.json,java_D_second_order_saved_filter_mitigation,java,SECOND_ORDER,D,D,True,D,D,True,True,True,0.6166,"{""A"": 0.1474, ""B"": 0.1144, ""C"": 0.1216, ""D"": 0.6166}",,,,# Fix D: do not execute SQL loaded from DB/config/user storage. Rebuild SQL from trusted static templates.
+quick.json,python_where_value_A_parameterized,python,IN_BAND,A,A,True,A,A,True,True,True,0.6307,"{""A"": 0.6307, ""B"": 0.1879, ""C"": 0.1052, ""D"": 0.0762}",,,,"# Fix: use parameterized query — never interpolate user input into SQL
+query = ""SELECT * FROM users WHERE id = ?""
+cursor.execute(query, (uid,))"
+quick.json,python_order_by_identifier_B_whitelist,python,IN_BAND,B,B,True,B,B,True,True,True,0.6659,"{""A"": 0.1889, ""B"": 0.6659, ""C"": 0.0885, ""D"": 0.0568}",,,,"    # Fix: whitelist allowed ORDER BY columns — identifiers cannot be parameterized
+    ALLOWED_COLUMNS = {""id"", ""name"", ""email"", ""created_at""}
+    if sort_column not in ALLOWED_COLUMNS:
+        raise ValueError(f""Invalid sort column: {sort_column}"")
+    query = f""SELECT * FROM users ORDER BY {sort_column}""
+    return cursor.execute(query).fetchall()"
+quick.json,python_table_identifier_B_whitelist,python,IN_BAND,B,B,True,B,B,True,True,True,0.6453,"{""A"": 0.1929, ""B"": 0.6453, ""C"": 0.11, ""D"": 0.0518}",,,,"    # Fix: whitelist allowed table names — identifiers cannot be parameterized
+    ALLOWED_TABLES = {""users"", ""orders"", ""products""}
+    if table not in ALLOWED_TABLES:
+        raise ValueError(f""Invalid table name: {table}"")
+    query = f""SELECT * FROM {table}""
+    return cursor.execute(query).fetchall()"

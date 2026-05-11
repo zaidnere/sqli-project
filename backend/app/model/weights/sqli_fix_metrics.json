@@ -6,52 +6,53 @@
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
-      "support": 72
+      "support": 144
     },
     "B": {
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
-      "support": 72
+      "support": 144
     },
     "C": {
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
-      "support": 72
+      "support": 144
     },
     "D": {
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
-      "support": 72
+      "support": 144
     }
   },
   "confusionMatrix": [
     [
-      72,
+      144,
       0,
       0,
       0
     ],
     [
       0,
-      72,
+      144,
       0,
       0
     ],
     [
       0,
       0,
-      72,
+      144,
       0
     ],
     [
       0,
       0,
       0,
-      72
+      144
     ]
   ],
-  "bestValidationScore": 1.0
+  "bestValidationScore": 1.0,
+  "bestEpoch": 2
 }

@@ -1,3 +1,4 @@
+# FIX_GENERATOR_RENDER_ONLY_MODEL2_MARKER
 """Model 2 fix renderer with semantic safety guards. Does not affect Model 1."""
 from __future__ import annotations
 import re
@@ -16,8 +17,58 @@ def _line_with(p, code):
     for line in code.splitlines():
         if re.search(p,line,re.I): return _indent_of(line), line
     return None
-def _detect_order_by_injection(code): return _rx(r"ORDER\s+BY[\s\S]{0,140}(?:\+\s*\w+|\$\{|\.\s*\$\w+)", _strip_comments(code,"python"))
-def _detect_table_name_injection(code): return _rx(r"FROM[\s\S]{0,100}(?:\+\s*\w+|\$\{|\.\s*\$\w+)", _strip_comments(code,"python"))
+def _detect_order_by_injection(code):
+    """
+    Detect dynamic ORDER BY identifiers only when the dynamic value appears
+    directly in the ORDER BY identifier position.
+
+    This should catch:
+      "ORDER BY " + sort_col
+      f"ORDER BY {sort_col}"
+      `ORDER BY ${sortCol}`
+      "ORDER BY " . $sortCol
+
+    It should NOT catch:
+      ORDER BY created_at LIMIT " + limit
+      ORDER BY id WHERE x = " + value
+    """
+    c = _strip_comments(code, "python")
+    return _rx(
+        r"\bORDER\s+BY\s*(?:"
+        r"[\"'`]\s*(?:\+|\.)\s*\$?[A-Za-z_$]\w*"
+        r"|(?:\+|\.)\s*\$?[A-Za-z_$]\w*"
+        r"|\{\s*[A-Za-z_$]\w*\s*\}"
+        r"|\$\{\s*[A-Za-z_$]\w*\s*\}"
+        r")",
+        c,
+    )
+
+
+def _detect_table_name_injection(code):
+    """
+    Detect dynamic table identifiers only when the dynamic value appears
+    directly after FROM/JOIN/UPDATE/INTO.
+
+    This should catch:
+      "SELECT * FROM " + table_name
+      f"SELECT * FROM {table_name}"
+      `SELECT * FROM ${tableName}`
+      "SELECT * FROM " . $tableName
+
+    It should NOT catch:
+      "SELECT * FROM users WHERE id = " + uid
+      because uid is a WHERE value, not a table name.
+    """
+    c = _strip_comments(code, "python")
+    return _rx(
+        r"\b(?:FROM|JOIN|UPDATE|INTO)\s*(?:"
+        r"[\"'`]\s*(?:\+|\.)\s*\$?[A-Za-z_$]\w*"
+        r"|(?:\+|\.)\s*\$?[A-Za-z_$]\w*"
+        r"|\{\s*[A-Za-z_$]\w*\s*\}"
+        r"|\$\{\s*[A-Za-z_$]\w*\s*\}"
+        r")",
+        c,
+    )
 def _has_execution_sink(code, language):
     c=_strip_comments(code,language)
     if language=="python": return _rx(r"\.\s*execute(?:many|script)?\s*\(", c)
