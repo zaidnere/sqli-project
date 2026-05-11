@@ -189,8 +189,8 @@ print("\nSaved dataset_profile.json")
 # SECTION 2 — Architecture constants and training hyperparameters
 # CRITICAL: architecture values must match backend inference.
 # ─────────────────────────────────────────────────────────────────────────────
-MODEL_VERSION = "model1-cnn-bilstm-dual-head-v18-ml95-binary"
-NORMALIZER_VERSION = "semantic-normalizer-v18-ml95-flow"  # update if backend normalizer semantics change
+MODEL_VERSION = "model1-cnn-bilstm-dual-head-v18-ml95-v2-normalizer"
+NORMALIZER_VERSION = "semantic-normalizer-v18-ml95-v2-safe-dynamic-sql"  # update if backend normalizer semantics change
 DATASET_VERSION = DATASET_PROFILE.get("vocabulary_sha256", "unknown")[:12]
 
 EMBED_DIM        = 64
@@ -229,7 +229,7 @@ ARCHITECTURE = {
     },
     "loss": "sample_weighted_BCE + lambda_type * sample_weighted_CCE",
     "lambda_type": LAMBDA_TYPE,
-    "hardcase_training": "V18-ML95 focuses the raw ML binary head on SAFE/VULNERABLE accuracy using hard SAFE counterexamples, vulnerable recall families, helper/provenance context, binary balancing, and threshold calibration",
+    "hardcase_training": "V18-ML95-v2 focuses the raw ML binary head on SAFE/VULNERABLE accuracy using hard SAFE counterexamples, vulnerable recall families, helper/provenance context, binary balancing, and threshold calibration",
     "threshold": THRESHOLD_CALIBRATED if "THRESHOLD_CALIBRATED" in globals() else THRESHOLD,
 }
 

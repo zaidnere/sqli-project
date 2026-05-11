@@ -666,6 +666,182 @@ def _collect_lhs_positions(tokens: list[str], eq_idx: int) -> list[int]:
     return positions
 
 
+
+
+def _extract_closed_string_map_vars(tokens: list[str]) -> set[str]:
+    """Return variables assigned to a closed literal map/array of SQL-safe strings.
+
+    This is intentionally conservative and is used to recognize patterns like:
+      const columns = { created: "created_at", email: "email" };
+      $allowed = ["id" => "id", "email" => "email"];
+      TABLE_MAP = {"users": "users", "orders": "orders"}
+
+    A later lookup from such a container with a string fallback is a validated
+    identifier source.  Without this signal, safe object-map/array-map ORDER BY
+    examples normalize as raw f-string SQL and the ML head learns that every
+    dynamic ORDER BY is vulnerable.
+    """
+    closed: set[str] = set()
+    n = len(tokens)
+    for idx, tok in enumerate(tokens):
+        if tok != "=":
+            continue
+        prev = tokens[idx - 1] if idx > 0 else None
+        nxt = tokens[idx + 1] if idx + 1 < n else None
+        if prev in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^") or nxt == "=":
+            continue
+        lhs_positions = _collect_lhs_positions(tokens, idx)
+        if not lhs_positions:
+            continue
+        j = idx + 1
+        while j < n and tokens[j] in ("const", "let", "var", "new"):
+            j += 1
+        if j >= n or tokens[j] not in ("{", "["):
+            continue
+        opener = tokens[j]
+        closer = "}" if opener == "{" else "]"
+        depth = 0
+        k = j
+        saw_string_value = False
+        unsafe = False
+        meaningful = 0
+        while k < n:
+            t = tokens[k]
+            if t == opener:
+                depth += 1
+            elif t == closer:
+                depth -= 1
+                if depth == 0:
+                    break
+            elif depth == 1:
+                meaningful += 1
+                # Accept identifiers as object keys, punctuation, arrows and literal keys/values.
+                if t in (":", ",", "=>", "?", "??") or is_identifier(t) or is_number(t):
+                    pass
+                elif is_string_literal(t) or (is_template_literal(t) and not _has_interpolation(t)):
+                    saw_string_value = True
+                else:
+                    unsafe = True
+                    break
+            k += 1
+        if depth != 0 or unsafe or not saw_string_value or meaningful == 0:
+            continue
+        for pos in lhs_positions:
+            name = tokens[pos]
+            if is_identifier(name):
+                closed.add(name)
+    return closed
+
+
+def _detect_closed_map_whitelist_assignment(tokens: list[str], eq_idx: int, closed_map_vars: set[str]) -> bool:
+    """Detect `safe = CLOSED_MAP[userValue] ||/?? default` and `CLOSED_MAP.get(x, default)`.
+
+    The map itself must have been extracted by _extract_closed_string_map_vars,
+    so values are static strings controlled by the program.  This covers
+    JavaScript object maps, PHP arrays and Python dict maps whose names do not
+    contain explicit allowlist hints.
+    """
+    if not closed_map_vars:
+        return False
+    n = len(tokens)
+    i = eq_idx + 1
+    depth = 0
+    while i < n:
+        t = tokens[i]
+        if depth == 0:
+            if t in (";", "\n"):
+                break
+            if i > eq_idx + 1 and t == "=":
+                prev_t = tokens[i - 1] if i - 1 >= 0 else None
+                next_t = tokens[i + 1] if i + 1 < n else None
+                if prev_t not in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^") and next_t != "=":
+                    break
+            if t in {"def", "class", "function", "return", "if", "for", "while"}:
+                break
+        if t in ("(", "[", "{"):
+            depth += 1
+        elif t in (")", "]", "}"):
+            depth -= 1
+            if depth < 0:
+                break
+        # CLOSED_MAP[...]
+        if t in closed_map_vars and i + 1 < n and tokens[i + 1] == "[":
+            # Prefer explicit fallback, but allow exact closed lookup too because
+            # undefined/null fallback often appears later as `|| "default"`.
+            return True
+        # CLOSED_MAP.get(...)
+        if t in closed_map_vars and i + 3 < n and tokens[i + 1] == "." and tokens[i + 2] == "get" and tokens[i + 3] == "(":
+            return True
+        i += 1
+    return False
+
+
+def _detect_safe_dynamic_sql_assignment(tokens: list[str], eq_idx: int, safe_interp_vars: set[str], fstring_safety: dict[int, str]) -> bool:
+    """Detect SQL variable built only from SQL literals plus validated fragments.
+
+    Examples:
+      sql = f"SELECT ... ORDER BY {safe_col}"
+      sql = "SELECT ... ORDER BY " + safe_col
+      sql = "SELECT ... LIMIT " + str(limit)
+
+    When true, execute(sql) should be tagged SAFE_EXEC, not UNSAFE_EXEC.
+    """
+    n = len(tokens)
+    i = eq_idx + 1
+    depth = 0
+    saw_sql = False
+    saw_dynamic_safe = False
+    while i < n:
+        t = tokens[i]
+        if depth == 0:
+            if t in (";", "\n"):
+                break
+            # Tokenizer drops newlines, so after seeing the SQL RHS, a bare
+            # identifier followed by '=' usually starts the next statement.
+            if saw_sql and is_identifier(t) and i + 1 < n and tokens[i + 1] == "=":
+                break
+            if i > eq_idx + 1 and t == "=":
+                prev_t = tokens[i - 1] if i - 1 >= 0 else None
+                next_t = tokens[i + 1] if i + 1 < n else None
+                if prev_t not in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^") and next_t != "=":
+                    break
+            if t in {"def", "class", "function", "return", "if", "for", "while"}:
+                break
+        if t in ("(", "[", "{"):
+            depth += 1
+        elif t in (")", "]", "}"):
+            depth -= 1
+            if depth < 0:
+                break
+        if is_fstring_sql(t):
+            if fstring_safety.get(i) == "WHITELIST_BOUND":
+                saw_sql = True
+                saw_dynamic_safe = True
+            else:
+                return False
+        elif is_sql_string(t):
+            saw_sql = True
+        elif is_string_literal(t) or (is_template_literal(t) and not _has_interpolation(t)) or is_number(t):
+            pass
+        elif t in ("+", ".", "%", ",", "(", ")", "[", "]", "{", "}", ":", "?", "??", "||"):
+            pass
+        elif is_identifier(t):
+            # Common wrappers around safe numeric identifiers.
+            if t in {"str", "String", "String.valueOf", "StringBuilder"}:
+                pass
+            elif t in safe_interp_vars:
+                saw_dynamic_safe = True
+            else:
+                # Allow method names around safe variables (e.g. safe.toString())
+                if i > 0 and tokens[i - 1] in (".", "->"):
+                    pass
+                else:
+                    return False
+        else:
+            return False
+        i += 1
+    return saw_sql and saw_dynamic_safe
+
 def _detect_whitelist_assignment(tokens: list[str], eq_idx: int) -> bool:
     """
     Detect strict-allowlist patterns across languages:
@@ -2106,6 +2282,7 @@ def normalize_tokens(
     static_sql_vars: set[str] = set()        # var assigned from static SQL literal/script only
     stored_sql_fragment_vars: set[str] = set()  # var/property extracted from saved/config/cache/DB SQL syntax
     saved_segment_object_vars: set[str] = set() # row/segment objects that may contain SQL fragment fields
+    closed_literal_map_vars = _extract_closed_string_map_vars(tokens)
 
     # ── Pre-scan: identify "safe-returning" helper functions ──────────────
     # A function is safe-returning if its body contains an assignment that
@@ -2164,7 +2341,7 @@ def normalize_tokens(
                 pv = tokens[bj - 1] if bj > 0 else None
                 nv = tokens[bj + 1] if bj + 1 < n_tokens else None
                 if pv not in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^") and nv != "=":
-                    if _detect_whitelist_assignment(tokens, bj):
+                    if _detect_whitelist_assignment(tokens, bj) or _detect_closed_map_whitelist_assignment(tokens, bj, closed_literal_map_vars):
                         safe_returning_funcs.add(fname)
                         break
             bj += 1
@@ -2189,7 +2366,7 @@ def normalize_tokens(
         signal = None
         if _detect_safe_placeholder_list(tokens, idx):
             signal = "SAFE_PLACEHOLDER_LIST"
-        elif _detect_whitelist_assignment(tokens, idx):
+        elif _detect_whitelist_assignment(tokens, idx) or _detect_closed_map_whitelist_assignment(tokens, idx, closed_literal_map_vars):
             signal = "WHITELIST_VAR"
         elif _detect_stored_sql_fragment_assignment(tokens, idx, db_loaded_vars | saved_segment_object_vars, db_returning_funcs):
             signal = "STORED_SQL_FRAGMENT"
@@ -2290,6 +2467,25 @@ def normalize_tokens(
             # The "validated but unused" anti-pattern (py_003).
             fstring_safety[idx] = "RAW_VAR_DESPITE_WHITELIST"
         # else: no safety context at all — leave default (FSTRING_SQL)
+
+    # Treat SQL variables built only from safe interpolations/closed maps as safe
+    # single-argument SQL variables. This prevents `execute(sql)` where `sql`
+    # contains only allowlisted ORDER BY/table fragments from being normalized
+    # as UNSAFE_EXEC.
+    safe_interp_vars_for_sql = whitelisted_vars | safe_placeholder_vars | safe_numeric_vars | safe_fragment_vars | static_sql_vars
+    for idx, tok in enumerate(tokens):
+        if tok != "=":
+            continue
+        prev = tokens[idx - 1] if idx > 0 else None
+        nxt = tokens[idx + 1] if idx + 1 < len(tokens) else None
+        if prev in ("=", "!", "<", ">", "+", "-", "*", "/", "%", "|", "&", "^") or nxt == "=":
+            continue
+        lhs_positions = _collect_lhs_positions(tokens, idx)
+        if not lhs_positions:
+            continue
+        if _detect_safe_dynamic_sql_assignment(tokens, idx, safe_interp_vars_for_sql, fstring_safety):
+            for pos in lhs_positions:
+                static_sql_vars.add(tokens[pos])
 
     # First pass: build normalized sequence
     raw_norm: list[str] = []

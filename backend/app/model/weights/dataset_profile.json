@@ -1,155 +1,161 @@
 {
-  "created_at": "2026-05-09T16:57:16.775082Z",
-  "n_samples": 2177,
+  "created_at": "2026-05-10T16:47:52.319476Z",
+  "n_samples": 2456,
   "sequence_length": 256,
   "vocabulary_size": 189,
   "vocabulary_sha256": "ca61dd07150bbcb7c4b4e4a0dbd17b6c97fca2cd42063f16e6557b17335a6008",
   "pad_id": 0,
   "unk_id": 1,
   "verdict_counts": {
-    "SAFE": 552,
-    "VULNERABLE": 1625
+    "SAFE": 1179,
+    "VULNERABLE": 1277
   },
   "attack_type_counts": {
-    "NONE": 552,
-    "IN_BAND": 609,
-    "BLIND": 455,
-    "SECOND_ORDER": 561
+    "NONE": 1179,
+    "IN_BAND": 440,
+    "BLIND": 333,
+    "SECOND_ORDER": 504
   },
   "language_counts": {
-    "python": 439,
-    "javascript": 844,
-    "java": 256,
-    "php": 638
+    "javascript": 930,
+    "python": 570,
+    "java": 254,
+    "php": 702
   },
   "sample_family_counts": {
-    "v18_flow_safe:python": 166,
-    "v18_flow_vuln:SECOND_ORDER": 400,
-    "v18_js_second_order_focus": 121,
-    "v18_flow_vuln:BLIND": 415,
-    "v18_flow_safe:php": 157,
-    "v18_flow_vuln:IN_BAND": 570,
-    "baseline:SECOND_ORDER": 40,
-    "baseline:NONE": 37,
-    "v18_flow_safe:javascript": 143,
-    "v18_flow_safe:java": 37,
-    "baseline:IN_BAND": 39,
+    "v18_js_second_order_focus": 177,
+    "v18_flow_vuln:SECOND_ORDER": 288,
+    "v18_flow_vuln:BLIND": 293,
+    "v18_flow_safe:python": 174,
+    "v18_flow_safe:javascript|binary_balance_safe_resample": 139,
+    "baseline:SECOND_ORDER": 39,
+    "v18_flow_safe:php": 167,
+    "v18_flow_safe:python|binary_balance_safe_resample": 185,
+    "v18_flow_safe:php|binary_balance_safe_resample": 173,
+    "v18_flow_safe:javascript": 136,
+    "v18_flow_vuln:IN_BAND": 402,
+    "baseline:NONE|binary_balance_safe_resample": 36,
+    "baseline:NONE": 40,
+    "v18_js_safe_sequelize_focus": 24,
     "baseline:BLIND": 40,
-    "v18_js_safe_sequelize_focus": 12
+    "v18_js_safe_sequelize_focus|binary_balance_safe_resample": 27,
+    "v18_flow_safe:java": 39,
+    "baseline:IN_BAND": 38,
+    "v18_flow_safe:java|binary_balance_safe_resample": 39
   },
-  "avg_sample_weight_binary": 3.7244832515716553,
-  "avg_sample_weight_type": 4.574275970458984,
+  "avg_sample_weight_binary": 3.546172857284546,
+  "avg_sample_weight_type": 3.9702768325805664,
   "max_sample_weight_binary": 5.199999809265137,
   "max_sample_weight_type": 7.599999904632568,
-  "avg_non_pad_length": 101.00459347726229,
+  "avg_non_pad_length": 101.54885993485343,
   "max_non_pad_length": 256,
   "min_non_pad_length": 36,
-  "padded_samples": 2174,
-  "truncated_samples": 3,
-  "truncation_rate": 0.0013780431786862655,
+  "padded_samples": 2450,
+  "truncated_samples": 6,
+  "truncation_rate": 0.0024429967426710096,
   "unk_token_count": 0,
   "unk_rate": 0.0,
-  "duplicate_sequence_count": 0,
+  "duplicate_sequence_count": 599,
   "top_tokens": [
     [
       "=",
-      15795
+      17604
     ],
     [
       ";",
-      15571
+      16808
     ],
     [
       "(",
-      14175
+      16490
     ],
     [
       ")",
-      14174
+      16486
     ],
     [
       ".",
-      12145
+      13857
     ],
     [
       "STRING",
-      9709
+      11744
     ],
     [
       ",",
-      7156
+      8885
     ],
     [
       "NUMBER",
-      6124
+      7224
     ],
     [
       "VAR_3",
-      5426
-    ],
-    [
-      "{",
-      5121
-    ],
-    [
-      "}",
-      5115
+      6101
     ],
     [
       "VAR_1",
-      5069
+      5805
+    ],
+    [
+      "{",
+      5763
+    ],
+    [
+      "}",
+      5751
     ],
     [
       "VAR_4",
-      4740
+      5331
     ],
     [
       "VAR_2",
-      4456
+      5099
     ],
     [
       "VAR_5",
-      4099
-    ],
-    [
-      "VAR_6",
-      3780
-    ],
-    [
-      "[",
-      3519
-    ],
-    [
-      "]",
-      3519
-    ],
-    [
-      "VAR_7",
-      3515
+      4679
     ],
     [
       ":",
-      3241
+      4293
+    ],
+    [
+      "VAR_6",
+      4088
+    ],
+    [
+      "[",
+      4078
+    ],
+    [
+      "]",
+      4078
+    ],
+    [
+      "VAR_7",
+      3933
     ],
     [
       "SAFE_NUMERIC_VAR",
-      3239
+      3793
     ],
     [
       "VAR_8",
-      3190
-    ],
-    [
-      "VAR_9",
-      2872
+      3528
     ],
     [
       "VAR_0",
-      2790
+      3262
+    ],
+    [
+      "VAR_9",
+      3090
     ],
     [
       "return",
-      2716
+      3080
     ]
   ]
 }

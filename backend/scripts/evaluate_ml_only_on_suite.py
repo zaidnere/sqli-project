@@ -4,14 +4,16 @@ Evaluate the raw ML model without final fusion/rule overrides.
 Run from backend/:
     set PYTHONPATH=%CD%
     venv\Scripts\python.exe scripts\evaluate_ml_only_on_suite.py ^
-      --suite test_suites\unseen_generalization_suite_v5.zip ^
-      --out outputs\ml_only_unseen_v5 ^
+      --suite test_suites\unseen_generalization_suite_latest_fixed.zip ^
+      --out outputs\ml95_full_sweep\unseen_generalization_suite_latest_fixed ^
       --sequence-length 256
 
-Purpose:
-- prove whether Model 1 itself is learning SAFE/VULNERABLE and attack type;
-- separate ML performance from evidence-aware fusion;
-- support the ML-primary requirement for the final project.
+V18-ML95 evaluation notes:
+- Uses the same chunk + semantic-normalization path used by the ML pipeline.
+- Propagates file-level helper context into chunk-level normalization.
+- Reads the calibrated binary threshold from app/model/weights/sqli_detection_metadata.json
+  unless --threshold is explicitly provided.
+- Can write per-file preprocessing/debug traces with --debug-preprocess.
 """
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ import tempfile
 import zipfile
 from collections import Counter
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -40,14 +42,29 @@ from app.preprocessing.normalizer import (
 from app.preprocessing.chunker import split_into_chunks
 from app.vectorization.vocabulary import build_fixed_vocabulary
 from app.vectorization.vectorizer import vectorize_tokens
-from app.model.inference import run_inference
+from app.model.inference import run_inference, WEIGHTS_PATH
 
-EXT_TO_LANG = {".py":"python", ".js":"javascript", ".java":"java", ".php":"php"}
+EXT_TO_LANG = {".py": "python", ".js": "javascript", ".java": "java", ".php": "php"}
 ATTACKS = {"NONE", "IN_BAND", "BLIND", "SECOND_ORDER"}
+SEMANTIC_TOKENS_TO_TRACK = [
+    "UNSAFE_EXEC",
+    "SAFE_EXEC",
+    "SQL_CONCAT",
+    "WHITELIST_VAR",
+    "SAFE_NUMERIC_VAR",
+    "SAFE_PLACEHOLDER_LIST",
+    "DB_LOADED_VAR",
+    "BOOLEAN_SINK",
+    "FSTRING_SQL_RAW",
+    "STORED_SQL_FRAGMENT",
+    "SQL_FRAGMENT_TO_SYNTAX",
+    "SECOND_ORDER_FLOW",
+    "SAVED_SEGMENT",
+]
 
 
 def infer_expected(path: str) -> Optional[Tuple[str, str]]:
-    p = path.replace('\\','/').upper()
+    p = path.replace("\\", "/").upper()
     name = Path(path).name.upper()
     if "SECOND_ORDER" in p:
         return "VULNERABLE", "SECOND_ORDER"
@@ -61,7 +78,7 @@ def infer_expected(path: str) -> Optional[Tuple[str, str]]:
 
 
 def read_manifest(root: Path) -> dict[str, Tuple[str, str]]:
-    out = {}
+    out: dict[str, Tuple[str, str]] = {}
     mf = root / "manifest.csv"
     if not mf.exists():
         return out
@@ -71,29 +88,70 @@ def read_manifest(root: Path) -> dict[str, Tuple[str, str]]:
             label = (row.get("expected_label") or row.get("label") or "").strip().upper()
             attack = (row.get("expected_attack_type") or row.get("attack_type") or "").strip().upper()
             if rel and label and attack:
-                out[rel.replace('\\','/')] = (label, attack)
+                out[rel.replace("\\", "/")] = (label, attack)
     return out
 
 
-def ml_predict_code(code: str, filename: str, sequence_length: int, threshold: float = 0.50) -> dict:
-    vocab = build_fixed_vocabulary()
+def _safe_read_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
-    # split_into_chunks expects a language name and returns tuples:
-    #     [(chunk_name, chunk_code), ...]
-    # Older versions of this script passed the filename and then sent the
-    # whole tuple into clean_code(), causing:
-    #     TypeError: expected string or bytes-like object, got 'tuple'
+
+def resolve_metadata_path(metadata_path_arg: str | None = None) -> Path:
+    if metadata_path_arg:
+        return Path(metadata_path_arg)
+    weights_dir = Path(WEIGHTS_PATH).resolve().parent
+    return weights_dir / "sqli_detection_metadata.json"
+
+
+def resolve_threshold(metadata: dict[str, Any], cli_threshold: float | None) -> tuple[float, str]:
+    if cli_threshold is not None:
+        return float(cli_threshold), "cli"
+    for key in ("threshold", "selected_threshold"):
+        value = metadata.get(key)
+        if isinstance(value, (int, float)):
+            return float(value), f"metadata.{key}"
+    arch = metadata.get("architecture") if isinstance(metadata.get("architecture"), dict) else {}
+    value = arch.get("threshold")
+    if isinstance(value, (int, float)):
+        return float(value), "metadata.architecture.threshold"
+    return 0.50, "default_0.50"
+
+
+def _semantic_tokens_present(tokens: list[str]) -> list[str]:
+    token_set = set(tokens)
+    return [tok for tok in SEMANTIC_TOKENS_TO_TRACK if tok in token_set]
+
+
+def ml_predict_code(
+    code: str,
+    filename: str,
+    sequence_length: int,
+    threshold: float,
+    debug: bool = False,
+) -> dict[str, Any]:
+    vocab = build_fixed_vocabulary()
     language = EXT_TO_LANG.get(Path(filename).suffix.lower(), "python")
-    full_tokens = tokenize_code(clean_code(code))
-    file_safe_funcs = extract_safe_returning_funcs(full_tokens)
-    file_numeric_funcs = extract_numeric_returning_funcs(full_tokens)
-    file_db_loaded_funcs = extract_db_returning_funcs(full_tokens)
+
+    # File-level helper facts: detect safe/numeric/db-returning helpers once on
+    # the full source, then propagate those facts into per-function chunks.
+    full_cleaned = clean_code(code)
+    full_raw_tokens = tokenize_code(full_cleaned)
+    file_safe_funcs = extract_safe_returning_funcs(full_raw_tokens)
+    file_numeric_funcs = extract_numeric_returning_funcs(full_raw_tokens)
+    file_db_loaded_funcs = extract_db_returning_funcs(full_raw_tokens)
 
     chunks = split_into_chunks(code, language)
     if not chunks:
         chunks = [("__file__", code)]
 
-    best = None
+    best: dict[str, Any] | None = None
+    chunk_debug: list[dict[str, Any]] = []
+
     for idx, chunk_item in enumerate(chunks):
         if isinstance(chunk_item, tuple):
             chunk_name, chunk_code = chunk_item
@@ -111,23 +169,70 @@ def ml_predict_code(code: str, filename: str, sequence_length: int, threshold: f
         vec = vectorize_tokens(tokens, vocab, max_length=sequence_length)
         pred = run_inference(vec["tokenIds"])
         if pred is None:
-            return {"ml_available": False, "ml_verdict": "NO_MODEL", "ml_attack_type": "NONE", "ml_risk": None, "chunk_index": idx, "chunk_name": chunk_name}
-        risk = float(pred.get("riskScore", 0.0))
-        if best is None or risk > best["ml_risk"]:
-            attack = str(pred.get("attackType") or "NONE").upper()
-            if attack not in ATTACKS:
-                attack = "NONE"
-            best = {
-                "ml_available": True,
-                "ml_verdict": "VULNERABLE" if risk >= threshold else "SAFE",
-                "ml_attack_type": attack if risk >= threshold else "NONE",
-                "ml_risk": risk,
+            return {
+                "ml_available": False,
+                "ml_verdict": "NO_MODEL",
+                "ml_attack_type": "NONE",
+                "ml_risk": None,
                 "chunk_index": idx,
                 "chunk_name": chunk_name,
-                "ml_attack_type_confidence": pred.get("attackTypeConfidence"),
-                "ml_attack_type_probs": pred.get("attackTypeProbs"),
+                "debug_chunks": chunk_debug,
             }
-    return best or {"ml_available": False, "ml_verdict":"NO_MODEL", "ml_attack_type":"NONE", "ml_risk":None, "chunk_index":0, "chunk_name":"__file__"}
+
+        risk = float(pred.get("riskScore", 0.0))
+        attack = str(pred.get("attackType") or "NONE").upper()
+        if attack not in ATTACKS:
+            attack = "NONE"
+
+        one = {
+            "ml_available": True,
+            "ml_verdict": "VULNERABLE" if risk >= threshold else "SAFE",
+            "ml_attack_type": attack if risk >= threshold else "NONE",
+            "ml_risk": risk,
+            "chunk_index": idx,
+            "chunk_name": chunk_name,
+            "ml_attack_type_confidence": pred.get("attackTypeConfidence"),
+            "ml_attack_type_probs": pred.get("attackTypeProbs"),
+        }
+
+        if debug:
+            chunk_debug.append({
+                "chunk_index": idx,
+                "chunk_name": chunk_name,
+                "risk": risk,
+                "raw_pred_attack_type": attack,
+                "attack_type_probs": pred.get("attackTypeProbs"),
+                "semantic_tokens_present": _semantic_tokens_present(tokens),
+                "normalized_tokens": tokens,
+            })
+
+        # Same existing suite policy: use the riskiest chunk as the file-level ML decision.
+        if best is None or risk > float(best["ml_risk"]):
+            best = one
+
+    if best is None:
+        best = {
+            "ml_available": False,
+            "ml_verdict": "NO_MODEL",
+            "ml_attack_type": "NONE",
+            "ml_risk": None,
+            "chunk_index": 0,
+            "chunk_name": "__file__",
+        }
+    if debug:
+        best["debug_chunks"] = chunk_debug
+        best["file_level_context"] = {
+            "safe_returning_funcs": sorted(file_safe_funcs),
+            "numeric_returning_funcs": sorted(file_numeric_funcs),
+            "db_returning_funcs": sorted(file_db_loaded_funcs),
+        }
+    return best
+
+
+def _bool_from_csv(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"true", "1", "yes", "y"}
 
 
 def main() -> int:
@@ -135,12 +240,35 @@ def main() -> int:
     ap.add_argument("--suite", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--sequence-length", type=int, default=256)
-    ap.add_argument("--threshold", type=float, default=0.50, help="ML-only binary threshold for SAFE/VULNERABLE.")
+    ap.add_argument("--threshold", type=float, default=None, help="Override ML-only binary threshold. If omitted, read from metadata.")
+    ap.add_argument("--metadata-path", default=None, help="Optional explicit path to sqli_detection_metadata.json.")
+    ap.add_argument("--debug-preprocess", action="store_true", help="Write per-file normalized tokens and probabilities to debug_preprocess.jsonl.")
     args = ap.parse_args()
+
+    metadata_path = resolve_metadata_path(args.metadata_path)
+    metadata = _safe_read_json(metadata_path)
+    threshold, threshold_source = resolve_threshold(metadata, args.threshold)
+
+    weights_path = Path(WEIGHTS_PATH).resolve()
+    model_version = metadata.get("model_version", "UNKNOWN")
+    vocabulary_sha256 = metadata.get("vocabulary_sha256", "UNKNOWN")
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    rows = []
+
+    print("=" * 80)
+    print("ML-only suite evaluation")
+    print(f"Suite: {args.suite}")
+    print(f"Output dir: {out_dir}")
+    print(f"Loaded weights path: {weights_path}")
+    print(f"Loaded metadata path: {metadata_path.resolve()}")
+    print(f"Model version: {model_version}")
+    print(f"Vocabulary SHA256: {vocabulary_sha256}")
+    print(f"Selected threshold: {threshold:.4f} ({threshold_source})")
+    print("=" * 80)
+
+    rows: list[dict[str, Any]] = []
+    debug_records: list[dict[str, Any]] = []
 
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -158,12 +286,18 @@ def main() -> int:
                 continue
             exp_label, exp_attack = expected
             code = f.read_text(encoding="utf-8", errors="replace")
-            pred = ml_predict_code(code, f.name, args.sequence_length, threshold=args.threshold)
+            pred = ml_predict_code(
+                code=code,
+                filename=f.name,
+                sequence_length=args.sequence_length,
+                threshold=threshold,
+                debug=args.debug_preprocess,
+            )
             ml_label = pred["ml_verdict"]
             ml_attack = pred["ml_attack_type"]
             binary_ok = (ml_label == exp_label)
             full_ok = binary_ok and (ml_attack == exp_attack)
-            rows.append({
+            row = {
                 "file": rel,
                 "expected_label": exp_label,
                 "expected_attack_type": exp_attack,
@@ -171,49 +305,115 @@ def main() -> int:
                 "ml_attack_type": ml_attack,
                 "ml_risk": pred.get("ml_risk"),
                 "ml_attack_type_confidence": pred.get("ml_attack_type_confidence"),
+                "ml_attack_type_probs": json.dumps(pred.get("ml_attack_type_probs"), ensure_ascii=False, sort_keys=True),
                 "chunk_index": pred.get("chunk_index"),
                 "chunk_name": pred.get("chunk_name"),
                 "binary_pass": binary_ok,
                 "full_pass": full_ok,
-            })
+            }
+            rows.append(row)
+
+            if args.debug_preprocess:
+                debug_records.append({
+                    "file": rel,
+                    "expected_label": exp_label,
+                    "expected_attack_type": exp_attack,
+                    "predicted_label": ml_label,
+                    "predicted_attack_type": ml_attack,
+                    "binary_pass": binary_ok,
+                    "full_pass": full_ok,
+                    "selected_chunk_index": pred.get("chunk_index"),
+                    "selected_chunk_name": pred.get("chunk_name"),
+                    "file_level_context": pred.get("file_level_context", {}),
+                    "chunks": pred.get("debug_chunks", []),
+                })
 
     total = len(rows)
-    bin_ok = sum(1 for r in rows if r["binary_pass"])
-    full_ok = sum(1 for r in rows if r["full_pass"])
+    bin_ok = sum(1 for r in rows if _bool_from_csv(r["binary_pass"]))
+    full_ok = sum(1 for r in rows if _bool_from_csv(r["full_pass"]))
     by_exp = Counter(r["expected_attack_type"] for r in rows)
     by_pred = Counter(r["ml_attack_type"] for r in rows)
 
+    tp = sum(1 for r in rows if r["expected_label"] == "VULNERABLE" and r["ml_label"] == "VULNERABLE")
+    tn = sum(1 for r in rows if r["expected_label"] == "SAFE" and r["ml_label"] == "SAFE")
+    fp = sum(1 for r in rows if r["expected_label"] == "SAFE" and r["ml_label"] == "VULNERABLE")
+    fn = sum(1 for r in rows if r["expected_label"] == "VULNERABLE" and r["ml_label"] == "SAFE")
+    precision = tp / max(1, tp + fp)
+    recall = tp / max(1, tp + fn)
+    specificity = tn / max(1, tn + fp)
+    f1 = (2 * precision * recall) / max(1e-12, precision + recall)
+
     csv_path = out_dir / "ml_only_results.csv"
     with csv_path.open("w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()) if rows else [])
+        fieldnames = list(rows[0].keys()) if rows else ["file"]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         if rows:
-            writer.writeheader(); writer.writerows(rows)
+            writer.writeheader()
+            writer.writerows(rows)
 
-    md = []
+    summary = {
+        "suite": Path(args.suite).name,
+        "mode": "ml-only",
+        "model_version": model_version,
+        "weights_path": str(weights_path),
+        "metadata_path": str(metadata_path.resolve()),
+        "vocabulary_sha256": vocabulary_sha256,
+        "threshold": threshold,
+        "threshold_source": threshold_source,
+        "total": total,
+        "safe_count": sum(1 for r in rows if r["expected_label"] == "SAFE"),
+        "vulnerable_count": sum(1 for r in rows if r["expected_label"] == "VULNERABLE"),
+        "binary_correct": bin_ok,
+        "binary_accuracy": bin_ok / max(1, total),
+        "full_correct": full_ok,
+        "full_accuracy": full_ok / max(1, total),
+        "precision": precision,
+        "recall": recall,
+        "specificity": specificity,
+        "f1": f1,
+        "false_positives": fp,
+        "false_negatives": fn,
+        "true_positives": tp,
+        "true_negatives": tn,
+        "expected_attack_distribution": dict(by_exp),
+        "ml_attack_distribution": dict(by_pred),
+    }
+
+    md: list[str] = []
     md.append("# ML-only Suite Evaluation\n")
+    md.append(f"- Suite: **{Path(args.suite).name}**\n")
+    md.append(f"- Model version: **{model_version}**\n")
+    md.append(f"- Weights: `{weights_path}`\n")
+    md.append(f"- Metadata: `{metadata_path.resolve()}`\n")
+    md.append(f"- Threshold: **{threshold:.4f}** from `{threshold_source}`\n")
     md.append(f"- Total: **{total}**\n")
-    md.append(f"- Threshold: **{args.threshold:.2f}**\n")
-    md.append(f"- Binary ML accuracy: **{bin_ok}/{total}** ({(bin_ok/max(1,total))*100:.2f}%)\n")
-    md.append(f"- Full ML label+type accuracy: **{full_ok}/{total}** ({(full_ok/max(1,total))*100:.2f}%)\n")
+    md.append(f"- Binary ML accuracy: **{bin_ok}/{total}** ({(bin_ok / max(1, total)) * 100:.2f}%)\n")
+    md.append(f"- Full ML label+type accuracy: **{full_ok}/{total}** ({(full_ok / max(1, total)) * 100:.2f}%)\n")
+    md.append(f"- Precision / Recall / F1: **{precision:.4f} / {recall:.4f} / {f1:.4f}**\n")
+    md.append(f"- FP / FN: **{fp} / {fn}**\n")
     md.append(f"- Expected attack distribution: `{dict(by_exp)}`\n")
     md.append(f"- ML attack distribution: `{dict(by_pred)}`\n\n")
     md.append("## Failures\n\n")
     for r in rows:
-        if not r["full_pass"]:
-            md.append(f"- `{r['file']}` expected `{r['expected_label']} / {r['expected_attack_type']}` got `{r['ml_label']} / {r['ml_attack_type']}` risk `{r['ml_risk']}`\n")
-    (out_dir / "ml_only_summary.md").write_text("".join(md), encoding="utf-8")
-    (out_dir / "ml_only_summary.json").write_text(json.dumps({
-        "total": total,
-        "binary_correct": bin_ok,
-        "binary_accuracy": bin_ok/max(1,total),
-        "full_correct": full_ok,
-        "full_accuracy": full_ok/max(1,total),
-        "expected_attack_distribution": dict(by_exp),
-        "ml_attack_distribution": dict(by_pred),
-    }, indent=2), encoding="utf-8")
+        if not _bool_from_csv(r["full_pass"]):
+            md.append(
+                f"- `{r['file']}` expected `{r['expected_label']} / {r['expected_attack_type']}` "
+                f"got `{r['ml_label']} / {r['ml_attack_type']}` risk `{r['ml_risk']}`\n"
+            )
 
-    print(f"ML-only binary accuracy: {bin_ok}/{total}")
-    print(f"ML-only full accuracy: {full_ok}/{total}")
+    (out_dir / "ml_only_summary.md").write_text("".join(md), encoding="utf-8")
+    (out_dir / "ml_only_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if args.debug_preprocess:
+        debug_path = out_dir / "debug_preprocess.jsonl"
+        with debug_path.open("w", encoding="utf-8") as f:
+            for record in debug_records:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        print(f"Wrote debug preprocess: {debug_path}")
+
+    print(f"ML-only binary accuracy: {bin_ok}/{total} ({(bin_ok / max(1, total)) * 100:.2f}%)")
+    print(f"ML-only full accuracy: {full_ok}/{total} ({(full_ok / max(1, total)) * 100:.2f}%)")
+    print(f"FP/FN: {fp}/{fn}")
     print(f"Wrote: {out_dir}")
     return 0
 

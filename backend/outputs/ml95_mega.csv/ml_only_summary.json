@@ -1,0 +1,19 @@
+{
+  "total": 40,
+  "binary_correct": 30,
+  "binary_accuracy": 0.75,
+  "full_correct": 25,
+  "full_accuracy": 0.625,
+  "expected_attack_distribution": {
+    "IN_BAND": 15,
+    "NONE": 15,
+    "BLIND": 5,
+    "SECOND_ORDER": 5
+  },
+  "ml_attack_distribution": {
+    "IN_BAND": 21,
+    "SECOND_ORDER": 6,
+    "BLIND": 6,
+    "NONE": 7
+  }
+}

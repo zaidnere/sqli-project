@@ -1,0 +1,43 @@
+# ML-only Suite Evaluation
+- Suite: **stable_expected_detection_suite.zip**
+- Model version: **model1-cnn-bilstm-dual-head-v18-ml95-binary**
+- Weights: `C:\Users\zaidn\OneDrive\Documents\final\sqli-project\backend\app\model\weights\sqli_model.npz`
+- Metadata: `C:\Users\zaidn\OneDrive\Documents\final\sqli-project\backend\app\model\weights\sqli_detection_metadata.json`
+- Threshold: **0.5200** from `metadata.threshold`
+- Total: **40**
+- Binary ML accuracy: **22/40** (55.00%)
+- Full ML label+type accuracy: **13/40** (32.50%)
+- Precision / Recall / F1: **0.5500 / 1.0000 / 0.7097**
+- FP / FN: **18 / 0**
+- Expected attack distribution: `{'NONE': 18, 'IN_BAND': 6, 'BLIND': 8, 'SECOND_ORDER': 8}`
+- ML attack distribution: `{'BLIND': 16, 'IN_BAND': 15, 'NONE': 4, 'SECOND_ORDER': 5}`
+
+## Failures
+
+- `stable_expected_detection_suite/java/021_SAFE_prepared_select.java` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9741`
+- `stable_expected_detection_suite/java/022_SAFE_prepared_update.java` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9741`
+- `stable_expected_detection_suite/java/027_SECOND_ORDER_saved_where_clause.java` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`
+- `stable_expected_detection_suite/java/028_SECOND_ORDER_stored_query.java` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`
+- `stable_expected_detection_suite/java/029_SAFE_db_loaded_value_as_param.java` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9741`
+- `stable_expected_detection_suite/java/030_SAFE_plain_no_sql.java` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9294`
+- `stable_expected_detection_suite/javascript/011_SAFE_parameterized_get.js` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9495`
+- `stable_expected_detection_suite/javascript/012_SAFE_parameterized_insert.js` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9495`
+- `stable_expected_detection_suite/javascript/014_IN_BAND_concat_update_status.js` expected `VULNERABLE / IN_BAND` got `VULNERABLE / NONE` risk `1.0`
+- `stable_expected_detection_suite/javascript/015_BLIND_login_row_exists.js` expected `VULNERABLE / BLIND` got `VULNERABLE / NONE` risk `1.0`
+- `stable_expected_detection_suite/javascript/016_BLIND_count_gt_zero.js` expected `VULNERABLE / BLIND` got `VULNERABLE / NONE` risk `0.9996`
+- `stable_expected_detection_suite/javascript/019_SAFE_db_loaded_value_as_param.js` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9495`
+- `stable_expected_detection_suite/javascript/020_SAFE_plain_service_no_sql.js` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9495`
+- `stable_expected_detection_suite/php/031_SAFE_pdo_select_parameterized.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `stable_expected_detection_suite/php/032_SAFE_pdo_update_parameterized.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `stable_expected_detection_suite/php/033_SAFE_placeholder_in_list.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `stable_expected_detection_suite/php/034_BLIND_login_num_rows.php` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
+- `stable_expected_detection_suite/php/035_BLIND_count_bool.php` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
+- `stable_expected_detection_suite/php/037_SECOND_ORDER_stored_query.php` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`
+- `stable_expected_detection_suite/php/038_SAFE_db_loaded_value_as_param.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `stable_expected_detection_suite/php/039_SAFE_plain_service_no_sql.php` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9294`
+- `stable_expected_detection_suite/php/040_SAFE_pdo_static_query_no_input.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `stable_expected_detection_suite/python/001_SAFE_basic_parameterized_lookup.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9507`
+- `stable_expected_detection_suite/python/002_SAFE_insert_parameterized.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9507`
+- `stable_expected_detection_suite/python/003_SAFE_update_parameterized.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9507`
+- `stable_expected_detection_suite/python/006_BLIND_login_boolean.py` expected `VULNERABLE / BLIND` got `VULNERABLE / NONE` risk `0.9999`
+- `stable_expected_detection_suite/python/010_SAFE_db_loaded_value_as_param.py` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9507`

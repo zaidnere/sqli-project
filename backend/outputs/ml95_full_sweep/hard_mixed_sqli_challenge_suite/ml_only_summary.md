@@ -1,0 +1,52 @@
+# ML-only Suite Evaluation
+- Suite: **hard_mixed_sqli_challenge_suite.zip**
+- Model version: **model1-cnn-bilstm-dual-head-v18-ml95-binary**
+- Weights: `C:\Users\zaidn\OneDrive\Documents\final\sqli-project\backend\app\model\weights\sqli_model.npz`
+- Metadata: `C:\Users\zaidn\OneDrive\Documents\final\sqli-project\backend\app\model\weights\sqli_detection_metadata.json`
+- Threshold: **0.5200** from `metadata.threshold`
+- Total: **80**
+- Binary ML accuracy: **63/80** (78.75%)
+- Full ML label+type accuracy: **44/80** (55.00%)
+- Precision / Recall / F1: **0.8308 / 0.9000 / 0.8640**
+- FP / FN: **11 / 6**
+- Expected attack distribution: `{'NONE': 20, 'IN_BAND': 20, 'BLIND': 20, 'SECOND_ORDER': 20}`
+- ML attack distribution: `{'NONE': 16, 'IN_BAND': 37, 'SECOND_ORDER': 21, 'BLIND': 6}`
+
+## Failures
+
+- `hard_mixed_sqli_challenge_suite/java/043_SAFE_set_contains_order_by.java` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/java/044_SAFE_db_value_reused_as_param.java` expected `SAFE / NONE` got `VULNERABLE / SECOND_ORDER` risk `0.8251`
+- `hard_mixed_sqli_challenge_suite/java/045_SAFE_numeric_bounds_limit.java` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/java/052_BLIND_login_statement.java` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/java/053_BLIND_permission_raw.java` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/java/054_BLIND_is_admin_raw.java` expected `VULNERABLE / BLIND` got `VULNERABLE / NONE` risk `0.9998`
+- `hard_mixed_sqli_challenge_suite/java/055_BLIND_token_raw.java` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/java/059_SECOND_ORDER_stored_query_run.java` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/javascript/021_SAFE_sqlite_param_array.js` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.9992`
+- `hard_mixed_sqli_challenge_suite/javascript/022_SAFE_set_whitelist_order.js` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/javascript/024_SAFE_number_limit_offset.js` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/javascript/028_IN_BAND_joined_ids.js` expected `VULNERABLE / IN_BAND` got `VULNERABLE / BLIND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/javascript/032_BLIND_feature_flag.js` expected `VULNERABLE / BLIND` got `VULNERABLE / SECOND_ORDER` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/javascript/033_BLIND_permission_check.js` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/javascript/034_BLIND_login_bool.js` expected `VULNERABLE / BLIND` got `VULNERABLE / SECOND_ORDER` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/javascript/037_SECOND_ORDER_cached_fragment.js` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/javascript/039_SECOND_ORDER_stored_query.js` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/javascript/040_SECOND_ORDER_saved_filter_builder.js` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/php/061_SAFE_pdo_prepare_execute.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.9052`
+- `hard_mixed_sqli_challenge_suite/php/064_SAFE_numeric_bounds.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `0.9165`
+- `hard_mixed_sqli_challenge_suite/php/068_IN_BAND_raw_ids_implode.php` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.0`
+- `hard_mixed_sqli_challenge_suite/php/072_BLIND_login_raw.php` expected `VULNERABLE / BLIND` got `SAFE / NONE` risk `0.0829`
+- `hard_mixed_sqli_challenge_suite/php/073_BLIND_feature_flag_raw.php` expected `VULNERABLE / BLIND` got `SAFE / NONE` risk `0.0232`
+- `hard_mixed_sqli_challenge_suite/php/074_BLIND_permission_exists.php` expected `VULNERABLE / BLIND` got `SAFE / NONE` risk `0.0829`
+- `hard_mixed_sqli_challenge_suite/php/079_SECOND_ORDER_stored_sql_run.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.4624`
+- `hard_mixed_sqli_challenge_suite/python/001_SAFE_exact_helper_whitelist_order_by.py` expected `SAFE / NONE` got `VULNERABLE / SECOND_ORDER` risk `0.9998`
+- `hard_mixed_sqli_challenge_suite/python/003_SAFE_numeric_limit_offset_bounds.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/python/005_SAFE_static_migration_executescript.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/python/008_IN_BAND_joined_ids_raw_in.py` expected `VULNERABLE / IN_BAND` got `VULNERABLE / SECOND_ORDER` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/python/010_IN_BAND_raw_table_name.py` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.0`
+- `hard_mixed_sqli_challenge_suite/python/011_BLIND_count_gt_zero_raw.py` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/python/012_BLIND_helper_bool_raw_fetchone.py` expected `VULNERABLE / BLIND` got `VULNERABLE / SECOND_ORDER` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/python/013_BLIND_role_check_raw.py` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/python/014_BLIND_token_raw.py` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/python/015_BLIND_active_session_raw.py` expected `VULNERABLE / BLIND` got `VULNERABLE / SECOND_ORDER` risk `1.0`
+- `hard_mixed_sqli_challenge_suite/python/017_SECOND_ORDER_cached_row_fragment.py` expected `VULNERABLE / SECOND_ORDER` got `VULNERABLE / IN_BAND` risk `1.0`

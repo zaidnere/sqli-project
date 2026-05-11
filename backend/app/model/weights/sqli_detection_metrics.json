@@ -1,104 +1,1829 @@
 {
+  "selected_threshold": 0.52,
+  "threshold_sweep": [
+    {
+      "threshold": 0.3,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.31,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.32,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.33,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.34,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.35,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.36,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.37,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.38,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.39,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.4,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.41,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.42,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.43,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.44,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.45,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.46,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.47,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.48,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.49,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.5,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.51,
+      "selection_score": 0.9973,
+      "acc": 0.9973,
+      "prec": 0.9948,
+      "rec": 1.0,
+      "spec": 0.9943,
+      "balanced_acc": 0.9972,
+      "f1": 0.9974,
+      "tp": 192,
+      "tn": 175,
+      "fp": 1,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.52,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.53,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.54,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.55,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.56,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.57,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.58,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.59,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.6,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.61,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.62,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.63,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.64,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.65,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.66,
+      "selection_score": 1.0,
+      "acc": 1.0,
+      "prec": 1.0,
+      "rec": 1.0,
+      "spec": 1.0,
+      "balanced_acc": 1.0,
+      "f1": 1.0,
+      "tp": 192,
+      "tn": 176,
+      "fp": 0,
+      "fn": 0,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.67,
+      "selection_score": 0.9973666666666666,
+      "acc": 0.9973,
+      "prec": 1.0,
+      "rec": 0.9948,
+      "spec": 1.0,
+      "balanced_acc": 0.9974,
+      "f1": 0.9974,
+      "tp": 191,
+      "tn": 176,
+      "fp": 0,
+      "fn": 1,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.68,
+      "selection_score": 0.9973666666666666,
+      "acc": 0.9973,
+      "prec": 1.0,
+      "rec": 0.9948,
+      "spec": 1.0,
+      "balanced_acc": 0.9974,
+      "f1": 0.9974,
+      "tp": 191,
+      "tn": 176,
+      "fp": 0,
+      "fn": 1,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.69,
+      "selection_score": 0.9973666666666666,
+      "acc": 0.9973,
+      "prec": 1.0,
+      "rec": 0.9948,
+      "spec": 1.0,
+      "balanced_acc": 0.9974,
+      "f1": 0.9974,
+      "tp": 191,
+      "tn": 176,
+      "fp": 0,
+      "fn": 1,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    },
+    {
+      "threshold": 0.7,
+      "selection_score": 0.9973666666666666,
+      "acc": 0.9973,
+      "prec": 1.0,
+      "rec": 0.9948,
+      "spec": 1.0,
+      "balanced_acc": 0.9974,
+      "f1": 0.9974,
+      "tp": 191,
+      "tn": 176,
+      "fp": 0,
+      "fn": 1,
+      "type_acc": 0.9946,
+      "type_macro_f1": 0.9921,
+      "per_class": {
+        "NONE": {
+          "n": 176,
+          "prec": 1.0,
+          "rec": 1.0,
+          "f1": 1.0
+        },
+        "IN_BAND": {
+          "n": 66,
+          "prec": 0.9706,
+          "rec": 1.0,
+          "f1": 0.9851
+        },
+        "BLIND": {
+          "n": 49,
+          "prec": 1.0,
+          "rec": 0.9796,
+          "f1": 0.9897
+        },
+        "SECOND_ORDER": {
+          "n": 77,
+          "prec": 1.0,
+          "rec": 0.987,
+          "f1": 0.9935
+        }
+      }
+    }
+  ],
   "validation": {
-    "acc": 0.9908,
-    "prec": 0.9918,
-    "rec": 0.9959,
-    "spec": 0.9759,
-    "balanced_acc": 0.9859,
-    "f1": 0.9939,
-    "tp": 243,
-    "tn": 81,
-    "fp": 2,
-    "fn": 1,
-    "type_acc": 0.9908,
-    "type_macro_f1": 0.9914,
+    "acc": 1.0,
+    "prec": 1.0,
+    "rec": 1.0,
+    "spec": 1.0,
+    "balanced_acc": 1.0,
+    "f1": 1.0,
+    "tp": 192,
+    "tn": 176,
+    "fp": 0,
+    "fn": 0,
+    "type_acc": 0.9946,
+    "type_macro_f1": 0.9921,
     "per_class": {
       "NONE": {
-        "n": 83,
-        "prec": 0.9878,
-        "rec": 0.9759,
-        "f1": 0.9818
+        "n": 176,
+        "prec": 1.0,
+        "rec": 1.0,
+        "f1": 1.0
       },
       "IN_BAND": {
-        "n": 91,
-        "prec": 0.9783,
-        "rec": 0.989,
-        "f1": 0.9836
+        "n": 66,
+        "prec": 0.9706,
+        "rec": 1.0,
+        "f1": 0.9851
       },
       "BLIND": {
-        "n": 68,
+        "n": 49,
         "prec": 1.0,
-        "rec": 1.0,
-        "f1": 1.0
+        "rec": 0.9796,
+        "f1": 0.9897
       },
       "SECOND_ORDER": {
-        "n": 85,
+        "n": 77,
         "prec": 1.0,
-        "rec": 1.0,
-        "f1": 1.0
+        "rec": 0.987,
+        "f1": 0.9935
       }
     },
     "type_cm": [
       [
-        81,
-        2,
+        176,
+        0,
         0,
         0
       ],
       [
+        0,
+        66,
+        0,
+        0
+      ],
+      [
+        0,
         1,
-        90,
-        0,
+        48,
         0
       ],
       [
         0,
+        1,
         0,
-        68,
-        0
-      ],
-      [
-        0,
-        0,
-        0,
-        85
+        76
       ]
     ]
   },
   "test": {
-    "acc": 0.9939,
+    "acc": 0.9946,
     "prec": 1.0,
-    "rec": 0.9918,
+    "rec": 0.9895,
     "spec": 1.0,
-    "balanced_acc": 0.9959,
-    "f1": 0.9959,
-    "tp": 242,
-    "tn": 83,
+    "balanced_acc": 0.9947,
+    "f1": 0.9947,
+    "tp": 188,
+    "tn": 179,
     "fp": 0,
     "fn": 2,
-    "type_acc": 0.9969,
-    "type_macro_f1": 0.9971,
+    "type_acc": 0.9864,
+    "type_macro_f1": 0.9815,
     "per_class": {
       "NONE": {
-        "n": 83,
-        "prec": 0.9881,
+        "n": 179,
+        "prec": 0.989,
         "rec": 1.0,
-        "f1": 0.994
+        "f1": 0.9944
       },
       "IN_BAND": {
-        "n": 92,
-        "prec": 1.0,
-        "rec": 0.9891,
-        "f1": 0.9945
+        "n": 65,
+        "prec": 0.9688,
+        "rec": 0.9538,
+        "f1": 0.9612
       },
       "BLIND": {
-        "n": 69,
-        "prec": 1.0,
-        "rec": 1.0,
-        "f1": 1.0
+        "n": 51,
+        "prec": 0.98,
+        "rec": 0.9608,
+        "f1": 0.9703
       },
       "SECOND_ORDER": {
-        "n": 83,
+        "n": 74,
         "prec": 1.0,
         "rec": 1.0,
         "f1": 1.0
@@ -106,28 +1831,28 @@
     },
     "type_cm": [
       [
-        83,
+        179,
         0,
         0,
         0
       ],
       [
+        2,
+        62,
         1,
-        91,
+        0
+      ],
+      [
         0,
+        2,
+        49,
         0
       ],
       [
         0,
         0,
-        69,
-        0
-      ],
-      [
         0,
-        0,
-        0,
-        83
+        74
       ]
     ]
   }
