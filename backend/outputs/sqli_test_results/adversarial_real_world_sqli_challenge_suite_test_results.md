@@ -1,8 +1,8 @@
 # SQLi Test Suite Results
 
 - Total: **32**
-- Passed: **32**
-- Failed: **0**
+- Passed: **31**
+- Failed: **1**
 
 | # | File | Expected | Actual | Risk | Pass |
 |---:|---|---|---|---:|---|
@@ -31,10 +31,19 @@
 | 23 | `java/023_SAFE_comments_only.java` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
 | 24 | `java/024_BLIND_time_based_statement.java` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9999 | ✅ |
 | 25 | `php/025_SAFE_pdo_allowlist_clamp_decoys.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
-| 26 | `php/026_IN_BAND_allowlist_exists_raw_used.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9986 | ✅ |
+| 26 | `php/026_IN_BAND_allowlist_exists_raw_used.php` | VULNERABLE / IN_BAND | SAFE / NONE | 0.08 | ❌ |
 | 27 | `php/027_BLIND_fetch_assoc_helper.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
 | 28 | `php/028_SECOND_ORDER_config_order_helper.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
 | 29 | `php/029_SAFE_db_value_bound_param.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
 | 30 | `php/030_IN_BAND_query_alias_raw.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9996 | ✅ |
 | 31 | `php/031_SAFE_comments_only.php` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
 | 32 | `php/032_BLIND_time_based_raw.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
+
+## Failures
+
+### `php/026_IN_BAND_allowlist_exists_raw_used.php`
+
+- Expected: `VULNERABLE / IN_BAND`
+- Actual: `SAFE / NONE`
+- Risk score: `0.08`
+- Explanation: No SQL injection patterns detected. Risk score: 8%.

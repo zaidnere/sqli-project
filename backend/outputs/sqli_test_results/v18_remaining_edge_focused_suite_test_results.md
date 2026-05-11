@@ -1,8 +1,8 @@
 # SQLi Test Suite Results
 
 - Total: **28**
-- Passed: **28**
-- Failed: **0**
+- Passed: **26**
+- Failed: **2**
 
 | # | File | Expected | Actual | Risk | Pass |
 |---:|---|---|---|---:|---|
@@ -22,8 +22,8 @@
 | 14 | `php/014_SAFE_local_array_whitelist_order.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
 | 15 | `php/015_SAFE_match_expression_order.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
 | 16 | `php/016_SAFE_helper_pick_sort_order.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
-| 17 | `php/017_IN_BAND_array_whitelist_computed_but_raw_used.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9991 | ✅ |
-| 18 | `php/018_IN_BAND_helper_safe_but_raw_used.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
+| 17 | `php/017_IN_BAND_array_whitelist_computed_but_raw_used.php` | VULNERABLE / IN_BAND | SAFE / NONE | 0.08 | ❌ |
+| 18 | `php/018_IN_BAND_helper_safe_but_raw_used.php` | VULNERABLE / IN_BAND | SAFE / NONE | 0.08 | ❌ |
 | 19 | `php/019_BLIND_count_alias_c_gt_zero.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
 | 20 | `php/020_BLIND_fetch_assoc_row_exists.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
 | 21 | `php/021_BLIND_num_rows_gt_zero.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
@@ -34,3 +34,19 @@
 | 26 | `php/026_SAFE_parameterized_count_bool.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
 | 27 | `php/027_SAFE_static_pdo_query_no_input.php` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
 | 28 | `php/028_SECOND_ORDER_saved_filter_where_clause.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
+
+## Failures
+
+### `php/017_IN_BAND_array_whitelist_computed_but_raw_used.php`
+
+- Expected: `VULNERABLE / IN_BAND`
+- Actual: `SAFE / NONE`
+- Risk score: `0.08`
+- Explanation: No SQL injection patterns detected. Risk score: 8%.
+
+### `php/018_IN_BAND_helper_safe_but_raw_used.php`
+
+- Expected: `VULNERABLE / IN_BAND`
+- Actual: `SAFE / NONE`
+- Risk score: `0.08`
+- Explanation: No SQL injection patterns detected. Risk score: 8%.

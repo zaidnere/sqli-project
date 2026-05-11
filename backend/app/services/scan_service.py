@@ -74,7 +74,7 @@ def _detection_metadata() -> dict:
     if _DETECTION_METADATA_CACHE is not None:
         return _DETECTION_METADATA_CACHE
     try:
-        _DETECTION_METADATA_CACHE = json.loads(_DETECTION_METADATA_PATH.read_text(encoding="utf-8"))
+        _DETECTION_METADATA_CACHE = json.loads(_DETECTION_METADATA_PATH.read_text(encoding="utf-8-sig"))
     except Exception:
         _DETECTION_METADATA_CACHE = {}
     return _DETECTION_METADATA_CACHE
@@ -165,7 +165,7 @@ def _raw_php_has_bound_execute(c: str) -> bool:
     """PHP PDO execute() with separately passed bound params.
 
     This deliberately accepts array literals that contain nested access such as
-    [$q["tenant"]]. A simple `r"\[[^\]]*\]"` regex stops too early on the
+    [$q["tenant"]]. A simple `r"\\[[^\\]]*\\]"` regex stops too early on the
     inner `]`, which caused safe PDO query-builder code to be misread as a
     raw sink.
     """
@@ -4068,3 +4068,1689 @@ def _apply_raw_evidence_override(raw_code: str, language: str, label: str, attac
             s.add("SAFE_EXEC")
             return "SAFE", "NONE", min(score, 0.08), "ml_priority_safe_placeholder_list", s
     return _apply_raw_evidence_override_prev_v7(raw_code, language, label, attack_type, score, source, all_signals, ml_score, ml_attack_type)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# V19 comprehensive attack-surface hotfix
+# Focus:
+#   1) SAFE allowlisted ORDER BY aliases/helpers across Python/JS/Java/PHP.
+#   2) SAFE ORM bind/replacements in JS.
+#   3) SECOND_ORDER provenance preservation for Java/PHP/Python/JS config/cache/DB fragments.
+# This block is deliberately generic: it recognizes source/sanitizer/sink structure,
+# not suite filenames.
+# ──────────────────────────────────────────────────────────────────────────────
+
+_raw_safe_allowlisted_identifier_sql_prev_v19 = _raw_safe_allowlisted_identifier_sql
+_raw_second_order_stored_sql_prev_v19 = _raw_second_order_stored_sql
+
+_SQL_SYNTAX_FRAGMENT_NAME_V19 = r"(?:where[_-]?clause|whereclause|where[_-]?fragment|sql[_-]?(?:body|text|fragment|segment)|saved[_-]?(?:filter|segment|sql)|stored[_-]?(?:filter|query|sql)|cached[_-]?(?:filter|where|sql)|order[_-]?(?:clause|expression|sql)|filter[_-]?sql|query[_-]?body|query[_-]?sql|fragment|predicate|condition)"
+
+
+def _v19_expr_name(expr: str) -> str:
+    return re.sub(r"^(?:this\.|self\.|\$this->)", "", (expr or "").strip())
+
+
+def _v19_has_sql_execution(code: str, language: str) -> bool:
+    if _raw_has_valid_execution_sink(code, language):
+        return True
+    c = _strip_comments(code, language)
+    if language == "php":
+        return bool(re.search(r"->\s*(?:query|prepare)\s*\(", c, re.I))
+    if language == "java":
+        return bool(re.search(r"\.(?:executeQuery|executeUpdate|execute)\s*\(", c, re.I))
+    if language == "javascript":
+        return bool(re.search(r"\.(?:query|all|get|run|execute|exec)\s*\(", c, re.I))
+    return bool(re.search(r"\.execute\s*\(", c, re.I))
+
+
+def _v19_safe_js_orm_bind_replacements(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    # Sequelize/sql-style bind/replacements: query("... $name ...", {bind:{...}})
+    # or query("... :name ...", {replacements:{...}}). No JS ${...} interpolation
+    # and no concatenation inside the SQL argument.
+    if not re.search(r"\b(?:sequelize|db|conn|connection|client|this\.[\w.]+)\s*\.\s*query\s*\(", c, re.I):
+        return False
+    safe_call = re.search(
+        r"\.\s*query\s*\(\s*(['\"])(?=[\s\S]{0,600}\b(?:SELECT|UPDATE|INSERT|DELETE)\b)(?![\s\S]{0,600}\$\{)[\s\S]{0,600}\1\s*,\s*\{\s*(?:bind|replacements)\s*:\s*\{",
+        c,
+        re.I | re.S,
+    )
+    if not safe_call:
+        return False
+    # If there is an obvious raw template/concat query elsewhere, do not safe-override.
+    return not bool(re.search(r"\.\s*query\s*\(\s*`[\s\S]*?\$\{", c, re.I | re.S))
+
+
+def _v19_used_order_concat_vars(code: str, language: str) -> set[str]:
+    c = _strip_comments(code, language)
+    used: set[str] = set()
+    if language == "python":
+        # "ORDER BY " + final_col, possibly directly in execute(...)
+        for m in re.finditer(r"ORDER\s+BY[^\n;\)]*?\+\s*([A-Za-z_]\w*)", c, re.I | re.S):
+            used.add(m.group(1))
+    elif language == "javascript":
+        for m in re.finditer(r"ORDER\s+BY[^;\)]*?\+\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)", c, re.I | re.S):
+            used.add(m.group(1).split(".")[-1])
+    elif language == "java":
+        for m in re.finditer(r"ORDER\s+BY[^;\)]*?\+\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)", c, re.I | re.S):
+            used.add(m.group(1).split(".")[-1])
+    elif language == "php":
+        for m in re.finditer(r"ORDER\s+BY[^;\)]*?\.\s*\$([A-Za-z_]\w*)", c, re.I | re.S):
+            used.add(m.group(1))
+    return used
+
+
+def _v19_safe_allowlisted_order_by(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if not re.search(r"ORDER\s+BY", c, re.I):
+        return False
+    if not _v19_has_sql_execution(c, language):
+        return False
+
+    used = _v19_used_order_concat_vars(c, language)
+    if not used:
+        return False
+
+    safe: set[str] = set()
+    helper_safe: set[str] = set()
+
+    if language == "python":
+        # def pick(...): allowed={...}; return allowed.get(...)
+        for fm in re.finditer(r"def\s+(\w+)\s*\([^)]*\):(?P<body>[\s\S]{0,900}?)(?=\n\s*def\s+|\nclass\s+|\Z)", c, re.I):
+            body = fm.group('body')
+            if re.search(r"\{\s*['\"][\w -]+['\"]\s*:\s*['\"][\w. ]+['\"]", body) and re.search(r"return[\s\S]{0,240}\.get\s*\(", body, re.I):
+                helper_safe.add(fm.group(1))
+        for m in re.finditer(r"\b([A-Za-z_]\w*)\s*=\s*(?:\{[^\n;]{0,500}\}\s*)?\.get\s*\(", c, re.I | re.S):
+            safe.add(m.group(1))
+        for m in re.finditer(r"\b([A-Za-z_]\w*)\s*=\s*(\w+)\s*\([^\n;]*\)", c):
+            if m.group(2) in helper_safe:
+                safe.add(m.group(1))
+        # selected = info["column"] from helper object
+        for m in re.finditer(r"\b([A-Za-z_]\w*)\s*=\s*(\w+)\s*\[\s*['\"](?:column|order|field|sort)['\"]\s*\]", c, re.I):
+            if m.group(2) in safe or helper_safe:
+                safe.add(m.group(1))
+        # alias propagation
+        assign_re = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\b", re.I)
+        for _ in range(8):
+            before = len(safe)
+            for m in assign_re.finditer(c):
+                if m.group(2) in safe:
+                    safe.add(m.group(1))
+            if len(safe) == before:
+                break
+
+    elif language == "javascript":
+        for fm in re.finditer(r"function\s+(\w+)\s*\([^)]*\)\s*\{(?P<body>[\s\S]{0,1000}?)\}", c, re.I):
+            body = fm.group('body')
+            if re.search(r"\{\s*[A-Za-z_]\w*\s*:\s*['\"][\w. ]+['\"]", body) and re.search(r"return[\s\S]{0,260}(?:\.get\s*\(|\[[^\]]+\]|\{\s*(?:order|column|field)\s*:)", body, re.I):
+                helper_safe.add(fm.group(1))
+        # Simple one-line helper/object literal helper detection. This catches
+        # compact generated functions where a regex body extractor stops at the
+        # first object-literal closing brace.
+        for hm in re.finditer(
+            r"function\s+(\w+)\s*\([^)]*\)\s*\{[\s\S]{0,900}?"
+            r"\{\s*[A-Za-z_]\w*\s*:\s*['\"][\w. ]+['\"]"
+            r"[\s\S]{0,900}?return[\s\S]{0,420}(?:\{\s*(?:order|column|field)\s*:|\[[^\]]+\]|\.get\s*\()",
+            c,
+            re.I | re.S,
+        ):
+            helper_safe.add(hm.group(1))
+
+        assign_re = re.compile(r"\b(?:const|let|var)\s+(\w+)\s*=\s*([^;]+);", re.I | re.S)
+        object_safe: set[str] = set()
+        for _ in range(10):
+            before = (len(safe), len(object_safe))
+            for m in assign_re.finditer(c):
+                lhs, rhs = m.group(1), m.group(2).strip()
+                if helper_safe and re.match(rf"(?:await\s+)?(?:{'|'.join(map(re.escape, helper_safe))})\s*\(", rhs, re.I):
+                    object_safe.add(lhs)
+                    safe.add(lhs)
+                if re.match(r"\{\s*[A-Za-z_]\w*\s*:\s*['\"][\w. ]+['\"]", rhs):
+                    object_safe.add(lhs)
+                for obj in list(object_safe):
+                    if re.search(rf"\b{re.escape(obj)}\s*\.\s*(?:order|column|field|sort)\b", rhs):
+                        safe.add(lhs)
+                if rhs in safe:
+                    safe.add(lhs)
+            if (len(safe), len(object_safe)) == before:
+                break
+
+    elif language == "java":
+        for m in re.finditer(r"\bString\s+(\w+)\s*=\s*[^;]{0,240}\b(?:contains|containsKey)\s*\([^;]+\)\s*\?\s*[^:;]+\s*:\s*\"[\w. ]+\"\s*;", c, re.I | re.S):
+            safe.add(m.group(1))
+        for m in re.finditer(r"\bString\s+(\w+)\s*=\s*(\w+)\s*;", c, re.I):
+            if m.group(2) in safe:
+                safe.add(m.group(1))
+
+    elif language == "php":
+        # $selected = $this->cols[...possibly nested array access...] ?? "created_at";
+        for m in re.finditer(r"\$(\w+)\s*=\s*\$this->\w+\s*\[[\s\S]{0,420}?\]\s*\?\?\s*['\"][\w. ]+['\"]\s*;", c, re.I | re.S):
+            safe.add(m.group(1))
+        # $selected = ["created"=>"created_at", ...][$raw] ?? "created_at";
+        for m in re.finditer(r"\$(\w+)\s*=\s*\[[\s\S]{0,500}?=>[\s\S]{0,500}?\][\s\S]{0,300}?\?\?\s*['\"][\w. ]+['\"]\s*;", c, re.I | re.S):
+            safe.add(m.group(1))
+        for m in re.finditer(r"\$(\w+)\s*=\s*[^;]{0,520}(?:\[[^\]]+\]|->\w+)\s*\?\?\s*['\"][\w. ]+['\"]\s*;", c, re.I | re.S):
+            if re.search(r"\[[^\]]*=>|\$this->\w+|safe_sort\s*\(", m.group(0), re.I):
+                safe.add(m.group(1))
+        for m in re.finditer(r"\$(\w+)\s*=\s*(\w+)\s*\([^;]*\)\s*;", c, re.I):
+            if re.search(r"function\s+" + re.escape(m.group(2)) + r"[\s\S]{0,650}\[[^\]]+=>[\s\S]{0,250}\?\?\s*['\"]", c, re.I):
+                safe.add(m.group(1))
+        for _ in range(8):
+            before = len(safe)
+            for m in re.finditer(r"\$(\w+)\s*=\s*\$(\w+)\s*;", c):
+                if m.group(2) in safe:
+                    safe.add(m.group(1))
+            if len(safe) == before:
+                break
+
+    return bool(used) and used.issubset(safe)
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if _raw_safe_allowlisted_identifier_sql_prev_v19(code, language):
+        return True
+    if language == "javascript" and _v19_safe_js_orm_bind_replacements(code):
+        return True
+    if _v19_safe_allowlisted_order_by(code, language):
+        return True
+    return False
+
+
+def _v19_python_second_order(code: str) -> bool:
+    c = _strip_comments(code, "python")
+    if not _v19_has_sql_execution(c, "python"):
+        return False
+    stored_objs: set[str] = set()
+    fragments: set[str] = set()
+    for m in re.finditer(r"\b(\w+)\s*=\s*(?:self\.)?(?:cache|config|settings|repo|store)[\w.]*\.(?:get|load|find|fetch|read|load_tenant_config)\w*\s*\(", c, re.I):
+        stored_objs.add(m.group(1))
+    for m in re.finditer(rf"\b(\w+)\s*=\s*(\w+)\.get\s*\(\s*['\"]{_SQL_SYNTAX_FRAGMENT_NAME_V19}['\"]", c, re.I):
+        if m.group(2) in stored_objs:
+            fragments.add(m.group(1))
+    for m in re.finditer(r"\b(\w+)\s*=\s*(\w+)\s*;?", c):
+        if m.group(2) in fragments:
+            fragments.add(m.group(1))
+    return any(re.search(rf"(?:WHERE|ORDER\s+BY|AND|HAVING|GROUP\s+BY)[^\n;)]*\+\s*{re.escape(v)}\b", c, re.I | re.S) for v in fragments)
+
+
+def _v19_java_second_order(code: str) -> bool:
+    c = _strip_comments(code, "java")
+    if not _v19_has_sql_execution(c, "java"):
+        return False
+    stored_objs: set[str] = set()
+    fragments: set[str] = set()
+    # Config cfg=svc.load(...), TenantConfig cfg=cache.getTenantConfig(...)
+    for m in re.finditer(r"\b(?:Config|TenantConfig|\w*Config|\w*Settings)\s+(\w+)\s*=\s*\w+\s*\.\s*(?:load|get|fetch|read|find|getTenantConfig)\w*\s*\(", c, re.I):
+        stored_objs.add(m.group(1))
+    # String cond=cfg.whereClause / rs.getString("sql_body")
+    for m in re.finditer(rf"\bString\s+(\w+)\s*=\s*(\w+)\s*\.\s*({_SQL_SYNTAX_FRAGMENT_NAME_V19})\b", c, re.I):
+        if m.group(2) in stored_objs:
+            fragments.add(m.group(1))
+    for m in re.finditer(rf"\bString\s+(\w+)\s*=\s*\w+\s*\.\s*getString\s*\(\s*['\"]{_SQL_SYNTAX_FRAGMENT_NAME_V19}['\"]", c, re.I):
+        fragments.add(m.group(1))
+    for m in re.finditer(r"\bString\s+(\w+)\s*=\s*(\w+)\s*;", c, re.I):
+        if m.group(2) in fragments:
+            fragments.add(m.group(1))
+    if any(re.search(rf"(?:WHERE|ORDER\s+BY|AND|HAVING|GROUP\s+BY)[^;)]*\+\s*{re.escape(v)}\b", c, re.I | re.S) for v in fragments):
+        return True
+    return any(re.search(rf"\+\s*{re.escape(o)}\s*\.\s*{_SQL_SYNTAX_FRAGMENT_NAME_V19}\b", c, re.I | re.S) for o in stored_objs)
+
+
+def _v19_php_second_order(code: str) -> bool:
+    c = _strip_comments(code, "php")
+    if not _v19_has_sql_execution(c, "php"):
+        return False
+    fragments: set[str] = set()
+    stored_objs: set[str] = set()
+    # $cfg = $this->config->load(...)
+    for m in re.finditer(r"\$(\w+)\s*=\s*\$this->\w+\s*->\s*(?:load|get|fetch|read|find)\w*\s*\(", c, re.I):
+        stored_objs.add(m.group(1))
+    # $where = $cfg->whereClause ?? ...
+    for m in re.finditer(rf"\$(\w+)\s*=\s*\$(\w+)\s*->\s*({_SQL_SYNTAX_FRAGMENT_NAME_V19})\b", c, re.I):
+        if m.group(2) in stored_objs:
+            fragments.add(m.group(1))
+    # $row = $res->fetch_assoc(); $frag = $row["sql_fragment"]
+    for m in re.finditer(rf"\$(\w+)\s*=\s*\$(\w+)\s*\[\s*['\"]{_SQL_SYNTAX_FRAGMENT_NAME_V19}['\"]\s*\]", c, re.I):
+        fragments.add(m.group(1))
+    # Direct query($row["sql_body"])
+    if re.search(rf"->\s*query\s*\(\s*\$\w+\s*\[\s*['\"]{_SQL_SYNTAX_FRAGMENT_NAME_V19}['\"]\s*\]", c, re.I):
+        return True
+    # query/prepare with SQL syntax concatenated with fragment variable.
+    if any(re.search(rf"(?:WHERE|ORDER\s+BY|AND|HAVING|GROUP\s+BY)[^;)]*\.\s*\${re.escape(v)}\b", c, re.I | re.S) for v in fragments):
+        return True
+    return any(re.search(rf"\.\s*\${re.escape(o)}\s*->\s*{_SQL_SYNTAX_FRAGMENT_NAME_V19}\b", c, re.I | re.S) for o in stored_objs)
+
+
+def _v19_js_second_order(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    if not _v19_has_sql_execution(c, "javascript"):
+        return False
+    stored_objs: set[str] = set()
+    fragments: set[str] = set()
+    for m in re.finditer(r"\b(?:const|let|var)\s+(\w+)\s*=\s*(?:await\s+)?(?:this\.)?\w*(?:cache|config|settings|segments|filters|repo|store)\w*\.\s*(?:get|load|find|fetch|read)\w*\s*\(", c, re.I):
+        stored_objs.add(m.group(1))
+    for m in re.finditer(rf"\b(?:const|let|var)\s+(\w+)\s*=\s*(\w+)\s*\.\s*({_SQL_SYNTAX_FRAGMENT_NAME_V19})\b", c, re.I):
+        if m.group(2) in stored_objs:
+            fragments.add(m.group(1))
+    for _ in range(6):
+        before = len(fragments)
+        for m in re.finditer(r"\b(?:const|let|var)\s+(\w+)\s*=\s*(\w+)\s*;", c, re.I):
+            if m.group(2) in fragments:
+                fragments.add(m.group(1))
+        if len(fragments) == before:
+            break
+    if any(re.search(rf"(?:WHERE|ORDER\s+BY|AND|HAVING|GROUP\s+BY)[^;)]*\+\s*{re.escape(v)}\b", c, re.I | re.S) for v in fragments):
+        return True
+    return any(re.search(rf"\+\s*{re.escape(o)}\s*\.\s*{_SQL_SYNTAX_FRAGMENT_NAME_V19}\b", c, re.I | re.S) for o in stored_objs)
+
+
+def _raw_second_order_stored_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if _raw_second_order_stored_sql_prev_v19(code, language):
+        return True
+    if language == "python" and _v19_python_second_order(code):
+        return True
+    if language == "javascript" and _v19_js_second_order(code):
+        return True
+    if language == "java" and _v19_java_second_order(code):
+        return True
+    if language == "php" and _v19_php_second_order(code):
+        return True
+    return False
+
+# V20 model-first attack-surface regression guard
+# Generic evidence additions for new attack-surface suites.
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v20 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v20 = None
+try:
+    _raw_time_based_delay_sql_prev_v20 = _raw_time_based_delay_sql
+except NameError:  # pragma: no cover
+    _raw_time_based_delay_sql_prev_v20 = None
+try:
+    _raw_second_order_stored_sql_prev_v20 = _raw_second_order_stored_sql
+except NameError:  # pragma: no cover
+    _raw_second_order_stored_sql_prev_v20 = None
+try:
+    _raw_js_inband_danger_prev_v20 = _raw_js_inband_danger
+except NameError:  # pragma: no cover
+    _raw_js_inband_danger_prev_v20 = None
+try:
+    _raw_python_raw_concat_executed_prev_v20 = _raw_python_raw_concat_executed
+except NameError:  # pragma: no cover
+    _raw_python_raw_concat_executed_prev_v20 = None
+
+
+def _v20_has_sql_execution(code: str, language: str) -> bool:
+    fn = globals().get('_v19_has_sql_execution')
+    if callable(fn):
+        try:
+            if fn(code, language):
+                return True
+        except Exception:
+            pass
+    return bool(re.search(r"(?:execute|executeQuery|query|raw|\$queryRawUnsafe|all|get|prepare)\s*\(", code, re.I))
+
+
+def _v20_order_by_uses_raw_untrusted_identifier(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if not re.search(r"ORDER\s+BY", c, re.I):
+        return False
+    if not _v20_has_sql_execution(c, language):
+        return False
+    if language == 'javascript':
+        return bool(re.search(r"\b(?:const|let|var)\s+(raw\w*|\w*Raw\w*)\s*=\s*(?:String\s*\()?[^;]*(?:req\.query|request\.query|params|query)", c, re.I | re.S) and re.search(r"ORDER\s+BY[^;`\n]*(?:\+\s*(raw\w*|\w*Raw\w*)|\$\{\s*(raw\w*|\w*Raw\w*)\s*\})", c, re.I | re.S))
+    if language == 'php':
+        return bool(re.search(r"\$(raw\w*|\w*Raw\w*)\s*=\s*(?:trim\s*\()?[^;]*(?:\$_GET|\$_POST|\$request|\$q|\$input)", c, re.I | re.S) and re.search(r"ORDER\s+BY[\s\S]{0,260}\.\s*\$(raw\w*|\w*Raw\w*)", c, re.I))
+    if language == 'python':
+        return bool(re.search(r"\b(raw\w*|\w*_raw|\w*Raw\w*)\s*=\s*[^\n;]*(?:request\.|\.GET|\.POST|args\.|query|params)", c, re.I | re.S) and re.search(r"ORDER\s+BY[^\n;]*(?:\+\s*(raw\w*|\w*_raw|\w*Raw\w*)|\{\s*(raw\w*|\w*_raw|\w*Raw\w*)\s*\})", c, re.I | re.S))
+    if language == 'java':
+        return bool(re.search(r"\bString\s+(raw\w*|\w*Raw\w*)\s*=\s*[^;]*(?:getParameter|request|getQuery)", c, re.I | re.S) and re.search(r"ORDER\s+BY[^;]*\+\s*(raw\w*|\w*Raw\w*)\b", c, re.I | re.S))
+    return False
+
+
+def _v20_safe_enum_or_constant_sql(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if not _v20_has_sql_execution(c, language):
+        return False
+    if _v20_order_by_uses_raw_untrusted_identifier(c, language):
+        return False
+    if re.search(r"ORDER\s+BY|GROUP\s+BY", c, re.I):
+        if language == 'python':
+            if re.search(r"\b\w+\s*=\s*(?:['\"]ASC['\"]|['\"]DESC['\"])", c, re.I) and re.search(r"ORDER\s+BY[\s\S]{0,220}(?:\{|\+)\s*\w+", c, re.I):
+                return True
+            if re.search(r"\b\w+\s*=\s*\{[\s\S]{0,450}['\"]\w+['\"]\s*:\s*['\"]\w+['\"]", c, re.I) and re.search(r"ORDER\s+BY|GROUP\s+BY", c, re.I):
+                return True
+        if language == 'javascript':
+            if re.search(r"(?:const|let|var)\s+\w+\s*=\s*\{[\s\S]{0,450}(?:created_at|email|status|ASC|DESC)", c, re.I) and re.search(r"ORDER\s+BY|GROUP\s+BY", c, re.I):
+                return True
+            if re.search(r"new\s+Set\s*\(\s*\[[\s\S]{0,260}(?:ASC|DESC|created_at|status|email)", c, re.I):
+                return True
+        if language == 'java':
+            if re.search(r"(?:Map\.of|Set\.of)\s*\([\s\S]{0,420}(?:ASC|DESC|created_at|status|email)", c, re.I) and re.search(r"ORDER\s+BY|GROUP\s+BY", c, re.I):
+                return True
+        if language == 'php':
+            if re.search(r"\$\w+\s*=\s*\[[\s\S]{0,450}=>[\s\S]{0,450}\]\s*;", c, re.I) and re.search(r"ORDER\s+BY|GROUP\s+BY", c, re.I):
+                return True
+    if language == 'python':
+        return bool(re.search(r"\bsql\s*=\s*['\"][^'\"]*(?:SELECT|UPDATE|DELETE|INSERT)[^'\"]*['\"]\s*\+\s*['\"]", c, re.I) and not re.search(r"request\.|\.GET|\.POST|args\.|params", c, re.I))
+    if language == 'javascript':
+        return bool(re.search(r"\b(?:const|let|var)\s+sql\s*=\s*['\"][^'\"]*(?:SELECT|UPDATE|DELETE|INSERT)[^'\"]*['\"]\s*\+\s*['\"]", c, re.I) and not re.search(r"req\.|request\.|query|params", c, re.I))
+    if language == 'php':
+        return bool(re.search(r"\$sql\s*=\s*['\"][^'\"]*(?:SELECT|UPDATE|DELETE|INSERT)[^'\"]*['\"]\s*\.\s*['\"]", c, re.I) and not re.search(r"\$_GET|\$_POST|\$request|\$q\[", c, re.I))
+    return False
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if _v20_order_by_uses_raw_untrusted_identifier(code, language):
+        return False
+    if _v20_safe_enum_or_constant_sql(code, language):
+        return True
+    return bool(_raw_safe_allowlisted_identifier_sql_prev_v20 and _raw_safe_allowlisted_identifier_sql_prev_v20(code, language))
+
+
+def _raw_time_based_delay_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if _raw_time_based_delay_sql_prev_v20 and _raw_time_based_delay_sql_prev_v20(code, language):
+        return True
+    c = _strip_comments(code, language)
+    if not re.search(r"(?:SELECT|UPDATE|DELETE|INSERT|WHERE|FROM)", c, re.I):
+        return False
+    return bool(re.search(r"\b(?:SLEEP|pg_sleep|BENCHMARK)\s*\(|WAITFOR\s+DELAY|xp_dirtree|LOAD_FILE\s*\(|\\\\[A-Za-z0-9_.-]+\\", c, re.I))
+
+
+def _v20_second_order_extra(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if not _v20_has_sql_execution(c, language):
+        return False
+    fragment_words = r"(?:where_clause|whereClause|order_clause|orderClause|group_clause|having_clause|sql_body|sqlBody|sql_text|sqlText|sql_fragment|sqlFragment|filter_sql|filterSql|saved_filter|savedFilter|saved_search|savedSearch|saved_segment|savedSegment|policy_sql|policySql|procedure_body|procedureBody|tenant_policy|tenantPolicy|dashboard_widget|dashboardWidget)"
+    if language == 'php':
+        if re.search(rf"\$\w+\s*=\s*\$\w+(?:->fetch|\[)[\s\S]{{0,320}}{fragment_words}", c, re.I):
+            return True
+        if re.search(rf"\$\w+\s*=\s*\$this->\w+->(?:load|get|fetch|read|find)\w*\([^;]*\)[\s\S]{{0,900}}(?:->query|->prepare|mysqli_query)", c, re.I):
+            return True
+        if re.search(rf"(?:WHERE|ORDER\s+BY|GROUP\s+BY|HAVING|AND)[^;)]*\.\s*\$\w*(?:Filter|Sql|Clause|Policy|Body|Fragment|Segment)\w*", c, re.I | re.S):
+            return True
+    elif language == 'java':
+        if re.search(rf"getString\s*\(\s*['\"]{fragment_words}['\"]\s*\)", c, re.I):
+            return True
+        if re.search(rf"\b(?:Config|TenantConfig|\w*Config|\w*Policy|\w*Settings)\s+\w+\s*=\s*\w+\.(?:load|get|fetch|read|find|getTenantConfig)\w*\(", c, re.I):
+            return True
+        if re.search(rf"(?:WHERE|ORDER\s+BY|GROUP\s+BY|HAVING|AND)[^;)]*\+\s*\w*(?:Filter|Sql|Clause|Policy|Body|Fragment|Segment)\w*", c, re.I | re.S):
+            return True
+    elif language == 'python':
+        if re.search(rf"(?:cache|config|settings|repo|store|policy)\w*\.(?:get|load|fetch|read|find)\w*\([\s\S]{{0,1200}}(?:WHERE|ORDER\s+BY|GROUP\s+BY|HAVING|AND)[^\n;)]*\+\s*\w+", c, re.I):
+            return True
+    elif language == 'javascript':
+        if re.search(rf"(?:cache|config|settings|repo|store|policy)\w*\.(?:get|load|fetch|read|find)\w*\([\s\S]{{0,1200}}(?:WHERE|ORDER\s+BY|GROUP\s+BY|HAVING|AND)[^;)]*(?:\+|\$\{{)", c, re.I):
+            return True
+    return False
+
+
+def _raw_second_order_stored_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if _raw_second_order_stored_sql_prev_v20 and _raw_second_order_stored_sql_prev_v20(code, language):
+        return True
+    return _v20_second_order_extra(code, language)
+
+
+def _raw_js_inband_danger(code: str) -> bool:  # type: ignore[override]
+    if _raw_js_inband_danger_prev_v20 and _raw_js_inband_danger_prev_v20(code):
+        return True
+    c = _strip_comments(code, 'javascript')
+    return bool(re.search(r"(?:sequelize\.query|db\.raw|knex\.raw|prisma\.\$queryRawUnsafe)\s*\(\s*`[\s\S]*?(?:SELECT|UPDATE|DELETE|INSERT)[\s\S]*?\$\{", c, re.I))
+
+
+def _raw_python_raw_concat_executed(code: str) -> bool:  # type: ignore[override]
+    if _raw_python_raw_concat_executed_prev_v20 and _raw_python_raw_concat_executed_prev_v20(code):
+        return True
+    c = _strip_comments(code, 'python')
+    return bool(re.search(r"(?:text|from_statement|raw)\s*\(\s*f?['\"][\s\S]*?(?:SELECT|UPDATE|DELETE|INSERT)[\s\S]*?(?:\{|%s|\.format\s*\()", c, re.I) and re.search(r"request\.|\.GET|\.POST|args\.|params", c, re.I))
+# V20.1 model-first raw-ORDER-BY regression guard
+# Fixes V20 over-broad SAFE allowlist classification. The previous safe guard
+# correctly learned allowlisted ORDER BY, but it was too permissive when a file
+# computed a safe value and then executed SQL with the original raw request value.
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v201 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v201 = None
+
+
+def _v201_py_vars_returned_raw_from_helper(code: str) -> set[str]:
+    raw_return_helpers: set[str] = set()
+    for m in re.finditer(r"def\s+(\w+)\s*\([^)]*\)\s*:\s*([\s\S]{0,700}?)(?=\n\s*def\s+|\n\s*class\s+|\Z)", code, re.I):
+        helper, body = m.group(1), m.group(2)
+        if re.search(r"\braw\s*=\s*(?:norm\s*\()?[^\n;]*(?:args\.get|request\.|\.GET|\.POST|params|query)", body, re.I):
+            if re.search(r"return\s+raw\b", body, re.I):
+                raw_return_helpers.add(helper)
+        if re.search(r"return\s+(?:args\.get|request\.|\.GET|\.POST|params|query)", body, re.I):
+            raw_return_helpers.add(helper)
+    raw_vars: set[str] = set()
+    for helper in raw_return_helpers:
+        for a in re.finditer(rf"\b(\w+)\s*=\s*(?:self\.)?{re.escape(helper)}\s*\(", code, re.I):
+            raw_vars.add(a.group(1))
+    return raw_vars
+
+
+def _v201_order_by_uses_raw_untrusted_identifier(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if not re.search(r"ORDER\s+BY", c, re.I):
+        return False
+    if not _v20_has_sql_execution(c, language):
+        return False
+
+    if language == "javascript":
+        # Direct raw request interpolation: ORDER BY ${req.query.sort} / + req.query.sort
+        if re.search(r"ORDER\s+BY[\s\S]{0,260}(?:\$\{\s*(?:req|request)\.(?:query|params|body)\.[\w.]+\s*\}|\+\s*(?:req|request)\.(?:query|params|body)\.[\w.]+)", c, re.I):
+            return True
+        # Track variables assigned from request/query, even if named requested/sort/field.
+        raw_vars = set()
+        for m in re.finditer(r"\b(?:const|let|var)\s+(\w+)\s*=\s*(?:norm\s*\(|String\s*\(|String\.raw\s*\()?[\s\S]{0,160}?(?:req|request)\.(?:query|params|body)\.[\w.]+", c, re.I):
+            raw_vars.add(m.group(1))
+        # Helper that returns raw request value assigned to a local variable.
+        for m in re.finditer(r"function\s+(\w+)\s*\([^)]*\)\s*\{([\s\S]{0,700}?)\}", c, re.I):
+            helper, body = m.group(1), m.group(2)
+            if re.search(r"return\s+(?:raw|requested|sort|field|column)\b", body, re.I):
+                for a in re.finditer(rf"\b(?:const|let|var)\s+(\w+)\s*=\s*{re.escape(helper)}\s*\(", c, re.I):
+                    raw_vars.add(a.group(1))
+        for v in raw_vars:
+            if re.search(rf"ORDER\s+BY[\s\S]{{0,260}}(?:\$\{{\s*{re.escape(v)}\s*\}}|\+\s*{re.escape(v)}\b)", c, re.I):
+                return True
+        return False
+
+    if language == "java":
+        # Direct use of the original parameter after an allowlist/Set.contains check.
+        checked_sources = set()
+        for m in re.finditer(r"\.contains\s*\(\s*(\w+)\s*\)\s*\?\s*\1\s*:", c, re.I):
+            checked_sources.add(m.group(1))
+        # Also treat method String parameters named sort/order/field/column as raw if used directly.
+        for m in re.finditer(r"\bString\s+(sort|orderBy|order|field|column)\b", c, re.I):
+            checked_sources.add(m.group(1))
+        for v in checked_sources:
+            # Safe cases usually execute + selected/finalOrder. Unsafe cases execute + sort.
+            if re.search(rf"ORDER\s+BY[\s\S]{{0,260}}\+\s*{re.escape(v)}\b", c, re.I):
+                return True
+        return False
+
+    if language == "php":
+        if re.search(r"ORDER\s+BY[\s\S]{0,260}\.\s*(?:\$\w+\s*\[\s*['\"]sort['\"]|\$_(?:GET|POST|REQUEST)\s*\[)", c, re.I):
+            return True
+        raw_vars = set()
+        for m in re.finditer(r"\$(\w+)\s*=\s*(?:trim\s*\(|\(string\)\s*)?[\s\S]{0,180}?(?:\$q\s*\[\s*['\"]sort['\"]|\$_(?:GET|POST|REQUEST)\s*\[|\$request)", c, re.I):
+            raw_vars.add(m.group(1))
+        for v in raw_vars:
+            if re.search(rf"ORDER\s+BY[\s\S]{{0,260}}\.\s*\${re.escape(v)}\b", c, re.I):
+                return True
+        return False
+
+    if language == "python":
+        raw_vars = set(_v201_py_vars_returned_raw_from_helper(c))
+        for m in re.finditer(r"\b(\w+)\s*=\s*(?:norm\s*\()?[^\n;]{0,180}(?:req\.args\.get|request\.|\.GET|\.POST|args\.get|params|get\s*\(\s*['\"]sort)", c, re.I):
+            raw_vars.add(m.group(1))
+        for v in raw_vars:
+            if re.search(rf"ORDER\s+BY[^\n;]{{0,260}}(?:\+\s*{re.escape(v)}\b|\{{\s*{re.escape(v)}\s*\}})", c, re.I):
+                return True
+        return False
+
+    return False
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    # Hard veto: if the executed ORDER BY uses the raw request/parameter value,
+    # the existence of an allowlist helper elsewhere in the file must not make it SAFE.
+    if _v201_order_by_uses_raw_untrusted_identifier(code, language):
+        return False
+    return bool(
+        _raw_safe_allowlisted_identifier_sql_prev_v201
+        and _raw_safe_allowlisted_identifier_sql_prev_v201(code, language)
+    )
+
+# V20.2 raw ORDER BY guard refinement
+# This replaces the V20/V20.1 SAFE-allowlist decision with a stricter rule:
+# SAFE only when the executed ORDER BY expression uses the sanitized/allowlisted value;
+# VULNERABLE when the executed ORDER BY expression uses the original request/parameter value.
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v202 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v202 = None
+
+
+def _v202_assignment_exprs(code: str, language: str) -> dict[str, str]:
+    c = _strip_comments(code, language)
+    out: dict[str, str] = {}
+    if language == "php":
+        for m in re.finditer(r"\$(\w+)\s*=\s*([^;\n]+)", c, re.I):
+            out[m.group(1)] = m.group(2)
+    elif language == "java":
+        for m in re.finditer(r"(?:String|var|Object)\s+(\w+)\s*=\s*([^;\n]+)", c, re.I):
+            out[m.group(1)] = m.group(2)
+    elif language == "javascript":
+        for m in re.finditer(r"(?:const|let|var)\s+(\w+)\s*=\s*([^;\n]+)", c, re.I):
+            out[m.group(1)] = m.group(2)
+    else:
+        for m in re.finditer(r"^\s*(\w+)\s*=\s*([^\n]+)", c, re.I | re.M):
+            out[m.group(1)] = m.group(2)
+    return out
+
+
+def _v202_expr_is_safely_allowlisted(expr: str, language: str) -> bool:
+    e = expr or ""
+    # The expression is safe when it is selected through a closed map/set/match/allowed list.
+    safe_words = r"(?:allow|allowed|allowlist|whitelist|columns|fields|sorts|orders|map|valid|permitted)"
+    if re.search(safe_words, e, re.I):
+        if language == "php" and re.search(r"\$\w+\s*\[|match\s*\(|array_key_exists|in_array", e, re.I):
+            return True
+        if language == "javascript" and re.search(r"\w+\s*\[|\.has\s*\(|\.includes\s*\(|\.get\s*\(", e, re.I):
+            return True
+        if language == "java" and re.search(r"\.contains\s*\(|\.get\s*\(|Map\.of|Set\.of", e, re.I):
+            return True
+        if language == "python" and re.search(r"\.get\s*\(|\[|\bin\s+", e, re.I):
+            return True
+    return False
+
+
+def _v202_expr_is_raw_request(expr: str, language: str) -> bool:
+    e = expr or ""
+    # A safely allowlisted expression may contain request text, e.g. allowed[req.query.sort].
+    if _v202_expr_is_safely_allowlisted(e, language):
+        return False
+    if language == "php":
+        return bool(re.search(r"\$_(?:GET|POST|REQUEST)\s*\[|\$request\b|\$q\s*\[|->input\s*\(", e, re.I))
+    if language == "javascript":
+        return bool(re.search(r"(?:req|request)\.(?:query|params|body)\b|URLSearchParams|\.get\s*\(\s*['\"]sort", e, re.I))
+    if language == "java":
+        return bool(re.search(r"getParameter\s*\(|request\.|getQuery", e, re.I))
+    return bool(re.search(r"request\.|\.GET|\.POST|args\.get|params\.get|query\.get|get\s*\(\s*['\"]sort", e, re.I))
+
+
+def _v202_raw_helper_return_vars(code: str, language: str) -> set[str]:
+    c = _strip_comments(code, language)
+    helpers: set[str] = set()
+    vars_out: set[str] = set()
+
+    if language == "javascript":
+        for m in re.finditer(r"function\s+(\w+)\s*\([^)]*\)\s*\{([\s\S]{0,900}?)\}", c, re.I):
+            helper, body = m.group(1), m.group(2)
+            if re.search(r"return\s+(?:req|request)\.(?:query|params|body)\.", body, re.I):
+                helpers.add(helper)
+            elif re.search(r"(?:const|let|var)\s+(\w+)\s*=\s*[^;]*(?:req|request)\.(?:query|params|body)\.[^;]*;[\s\S]{0,260}return\s+\1\b", body, re.I):
+                helpers.add(helper)
+        for h in helpers:
+            for a in re.finditer(rf"(?:const|let|var)\s+(\w+)\s*=\s*{re.escape(h)}\s*\(", c, re.I):
+                vars_out.add(a.group(1))
+
+    elif language == "python":
+        for m in re.finditer(r"def\s+(\w+)\s*\([^)]*\)\s*:\s*([\s\S]{0,900}?)(?=\n\s*def\s+|\n\s*class\s+|\Z)", c, re.I):
+            helper, body = m.group(1), m.group(2)
+            if re.search(r"return\s+(?:request\.|\.GET|\.POST|args\.get|params\.get|query\.get)", body, re.I):
+                helpers.add(helper)
+            elif re.search(r"(\w+)\s*=\s*[^\n]*(?:request\.|\.GET|\.POST|args\.get|params\.get|query\.get)[^\n]*\n[\s\S]{0,260}return\s+\1\b", body, re.I):
+                helpers.add(helper)
+        for h in helpers:
+            for a in re.finditer(rf"\b(\w+)\s*=\s*(?:self\.)?{re.escape(h)}\s*\(", c, re.I):
+                vars_out.add(a.group(1))
+
+    elif language == "php":
+        for m in re.finditer(r"function\s+(\w+)\s*\([^)]*\)\s*\{([\s\S]{0,900}?)\}", c, re.I):
+            helper, body = m.group(1), m.group(2)
+            if re.search(r"return\s+(?:\$_(?:GET|POST|REQUEST)\s*\[|\$request|\$q\s*\[)", body, re.I):
+                helpers.add(helper)
+            elif re.search(r"\$(\w+)\s*=\s*[^;]*(?:\$_(?:GET|POST|REQUEST)\s*\[|\$request|\$q\s*\[)[^;]*;[\s\S]{0,260}return\s+\$\1\b", body, re.I):
+                helpers.add(helper)
+        for h in helpers:
+            for a in re.finditer(rf"\$(\w+)\s*=\s*(?:\$this->)?{re.escape(h)}\s*\(", c, re.I):
+                vars_out.add(a.group(1))
+
+    return vars_out
+
+
+def _v202_order_by_uses_raw_untrusted_identifier(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if not re.search(r"ORDER\s+BY", c, re.I):
+        return False
+    if not _v20_has_sql_execution(c, language):
+        return False
+
+    assignments = _v202_assignment_exprs(c, language)
+    raw_vars: set[str] = set()
+    safe_vars: set[str] = set()
+
+    for var, expr in assignments.items():
+        if _v202_expr_is_safely_allowlisted(expr, language):
+            safe_vars.add(var)
+        elif _v202_expr_is_raw_request(expr, language):
+            raw_vars.add(var)
+
+    raw_vars |= _v202_raw_helper_return_vars(c, language)
+
+    # Direct request expressions inside executed ORDER BY are always raw.
+    if language == "php":
+        if re.search(r"ORDER\s+BY[\s\S]{0,320}\.\s*(?:\$_(?:GET|POST|REQUEST)\s*\[|\$request|\$q\s*\[)", c, re.I):
+            return True
+        for v in raw_vars:
+            if re.search(rf"ORDER\s+BY[\s\S]{{0,320}}\.\s*\${re.escape(v)}\b", c, re.I):
+                return True
+        return False
+
+    if language == "javascript":
+        if re.search(r"ORDER\s+BY[\s\S]{0,320}(?:\$\{\s*(?:req|request)\.(?:query|params|body)\.|\+\s*(?:req|request)\.(?:query|params|body)\.)", c, re.I):
+            return True
+        for v in raw_vars:
+            if re.search(rf"ORDER\s+BY[\s\S]{{0,320}}(?:\$\{{\s*{re.escape(v)}\s*\}}|\+\s*{re.escape(v)}\b)", c, re.I):
+                return True
+        return False
+
+    if language == "java":
+        # Java method parameters are untrusted if used directly after ORDER BY.
+        for m in re.finditer(r"\bString\s+(sort|orderBy|order|field|column)\b", c, re.I):
+            raw_vars.add(m.group(1))
+        # Ternary safe value: selected = allowed.contains(sort) ? sort : default;
+        for m in re.finditer(r"\bString\s+(\w+)\s*=\s*[^;]*\.contains\s*\(\s*(\w+)\s*\)\s*\?\s*\2\s*:", c, re.I):
+            safe_vars.add(m.group(1))
+        for v in raw_vars:
+            if v in safe_vars:
+                continue
+            if re.search(rf"ORDER\s+BY[\s\S]{{0,320}}\+\s*{re.escape(v)}\b", c, re.I):
+                return True
+        return False
+
+    # Python
+    if re.search(r"ORDER\s+BY[\s\S]{0,320}(?:\{\s*(?:request\.|args\.get|params\.get)|\+\s*(?:request\.|args\.get|params\.get))", c, re.I):
+        return True
+    for v in raw_vars:
+        if v in safe_vars:
+            continue
+        if re.search(rf"ORDER\s+BY[^\n;]{{0,320}}(?:\+\s*{re.escape(v)}\b|\{{\s*{re.escape(v)}\s*\}})", c, re.I):
+            return True
+    return False
+
+
+def _v202_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if not re.search(r"ORDER\s+BY|GROUP\s+BY", c, re.I):
+        return False
+    if _v202_order_by_uses_raw_untrusted_identifier(c, language):
+        return False
+    assignments = _v202_assignment_exprs(c, language)
+    safe_vars = {v for v, e in assignments.items() if _v202_expr_is_safely_allowlisted(e, language)}
+
+    if language == "php":
+        for v in safe_vars:
+            if re.search(rf"ORDER\s+BY[\s\S]{{0,320}}\.\s*\${re.escape(v)}\b", c, re.I):
+                return True
+        return bool(re.search(r"match\s*\([^)]*\)\s*\{[\s\S]{0,700}ORDER\s+BY[\s\S]{0,320}\.\s*\$\w+", c, re.I))
+
+    if language == "javascript":
+        for v in safe_vars:
+            if re.search(rf"ORDER\s+BY[\s\S]{{0,320}}(?:\$\{{\s*{re.escape(v)}\s*\}}|\+\s*{re.escape(v)}\b)", c, re.I):
+                return True
+        return False
+
+    if language == "java":
+        for v in safe_vars:
+            if re.search(rf"ORDER\s+BY[\s\S]{{0,320}}\+\s*{re.escape(v)}\b", c, re.I):
+                return True
+        return False
+
+    for v in safe_vars:
+        if re.search(rf"ORDER\s+BY[^\n;]{{0,320}}(?:\+\s*{re.escape(v)}\b|\{{\s*{re.escape(v)}\s*\}})", c, re.I):
+            return True
+    return False
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    # Veto first: if raw request/parameter is what actually reaches ORDER BY,
+    # the code is not safe even if an allowlist/helper appears elsewhere.
+    if _v202_order_by_uses_raw_untrusted_identifier(code, language):
+        return False
+    # Positive safe recognition for exact allowlisted value reaching ORDER BY.
+    if _v202_safe_allowlisted_identifier_sql(code, language):
+        return True
+    # Bypass the V20.1 wrapper when possible, because it was too broad for
+    # PHP match/array allowlist SAFE cases. Fall back to earlier implementations.
+    base = globals().get('_raw_safe_allowlisted_identifier_sql_prev_v201')
+    if callable(base):
+        return bool(base(code, language))
+    base = globals().get('_raw_safe_allowlisted_identifier_sql_prev_v20')
+    if callable(base):
+        return bool(base(code, language))
+    base = _raw_safe_allowlisted_identifier_sql_prev_v202
+    return bool(base and base(code, language))
+
+# V20.3 PHP safe match/helper ORDER BY refinement
+# Keeps V20.2 raw-request veto, but restores true SAFE PHP allowlist cases:
+#   $sort = match (...) { ... => "created_at", ... };
+#   $sort = pickSort(...);  // helper returns only a closed allowlist value
+#   $sql = "SELECT ... ORDER BY " . $sort;
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v203 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v203 = None
+try:
+    _raw_php_danger_prev_v203 = _raw_php_danger
+except NameError:  # pragma: no cover
+    _raw_php_danger_prev_v203 = None
+
+
+def _v203_php_safe_match_order_var(code: str) -> set[str]:
+    c = _strip_comments(code, "php")
+    safe_vars: set[str] = set()
+
+    # PHP 8 match expression assigned to a variable.
+    # Safe only when every visible arm returns a quoted identifier-like value,
+    # and no arm returns raw request data.
+    for m in re.finditer(
+        r"\$(\w+)\s*=\s*match\s*\([^)]*\)\s*\{([\s\S]{0,1200}?)\}\s*;",
+        c,
+        re.I,
+    ):
+        var, body = m.group(1), m.group(2)
+        if re.search(r"\$_(?:GET|POST|REQUEST)\s*\[|\$request\b|\$q\s*\[|->input\s*\(", body, re.I):
+            continue
+        quoted_values = re.findall(r"=>\s*['\"]([A-Za-z_][A-Za-z0-9_\.]*)['\"]", body, re.I)
+        if len(quoted_values) >= 2:
+            safe_vars.add(var)
+
+    return safe_vars
+
+
+def _v203_php_safe_helper_return_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "php")
+    helpers: set[str] = set()
+    safe_vars: set[str] = set()
+
+    # Helper whose body contains a closed allowlist/match and returns only a selected
+    # allowlist variable or a quoted fallback. It must not return $_GET/$request/$q directly.
+    for m in re.finditer(
+        r"function\s+(\w+)\s*\([^)]*\)\s*\{([\s\S]{0,1500}?)\}",
+        c,
+        re.I,
+    ):
+        helper, body = m.group(1), m.group(2)
+        if re.search(r"return\s+(?:\$_(?:GET|POST|REQUEST)\s*\[|\$request\b|\$q\s*\[|->input\s*\()", body, re.I):
+            continue
+
+        has_closed_allowlist = bool(
+            re.search(r"\$\w+\s*=\s*\[[\s\S]{0,900}=>[\s\S]{0,900}\]\s*;", body, re.I)
+            or re.search(r"match\s*\([^)]*\)\s*\{[\s\S]{0,900}=>\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I)
+            or re.search(r"in_array\s*\([^)]*\)|array_key_exists\s*\([^)]*\)", body, re.I)
+        )
+        if not has_closed_allowlist:
+            continue
+
+        # Return a variable that was selected from an allowlist/match.
+        if re.search(r"return\s+\$\w+\s*;", body, re.I) or re.search(r"return\s+['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]\s*;", body, re.I):
+            helpers.add(helper)
+
+    for helper in helpers:
+        for a in re.finditer(rf"\$(\w+)\s*=\s*(?:\$this->)?{re.escape(helper)}\s*\(", c, re.I):
+            safe_vars.add(a.group(1))
+
+    return safe_vars
+
+
+def _v203_php_safe_allowlisted_order(code: str) -> bool:
+    c = _strip_comments(code, "php")
+    if not re.search(r"ORDER\s+BY", c, re.I):
+        return False
+    if not _v20_has_sql_execution(c, "php"):
+        return False
+    # Keep the V20.2 hard veto. If raw input reaches ORDER BY, not safe.
+    if _v202_order_by_uses_raw_untrusted_identifier(c, "php"):
+        return False
+
+    safe_vars = set()
+    safe_vars |= _v203_php_safe_match_order_var(c)
+    safe_vars |= _v203_php_safe_helper_return_vars(c)
+
+    # Also cover classic map assignment spread over multiple lines:
+    # $allowed = [...]; $sort = $allowed[$q["sort"]] ?? "created_at";
+    for m in re.finditer(
+        r"\$(\w+)\s*=\s*\$\w+\s*\[[^\]]+\]\s*\?\?\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        safe_vars.add(m.group(1))
+
+    for var in safe_vars:
+        if re.search(rf"ORDER\s+BY[\s\S]{{0,360}}\.\s*\${re.escape(var)}\b", c, re.I):
+            return True
+
+    return False
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "php" and _v203_php_safe_allowlisted_order(code):
+        return True
+    return bool(
+        _raw_safe_allowlisted_identifier_sql_prev_v203
+        and _raw_safe_allowlisted_identifier_sql_prev_v203(code, language)
+    )
+
+
+def _raw_php_danger(code: str) -> bool:  # type: ignore[override]
+    # Do not let the generic PHP raw-concat detector override a proven safe
+    # PHP match/helper allowlisted ORDER BY.
+    if _v203_php_safe_allowlisted_order(code):
+        return False
+    return bool(_raw_php_danger_prev_v203 and _raw_php_danger_prev_v203(code))
+
+# V20.4 PHP match/helper safe ORDER BY final refinement
+# This fixes the two remaining v18_edge SAFE PHP cases:
+#   php/015_SAFE_match_expression_order.php
+#   php/016_SAFE_helper_pick_sort_order.php
+#
+# Root cause:
+# V20.2 correctly blocked SAFE when ORDER BY used raw request values, but its
+# raw veto also treated variables assigned from PHP match/helper allowlists as
+# raw because those expressions still mention $q["sort"] as the lookup key.
+#
+# V20.4 distinguishes:
+#   - raw request value reaches ORDER BY directly -> VULNERABLE
+#   - request value is only used as a key into a closed match/map/helper -> SAFE
+try:
+    _v202_order_by_uses_raw_untrusted_identifier_prev_v204 = _v202_order_by_uses_raw_untrusted_identifier
+except NameError:  # pragma: no cover
+    _v202_order_by_uses_raw_untrusted_identifier_prev_v204 = None
+try:
+    _v203_php_safe_allowlisted_order_prev_v204 = _v203_php_safe_allowlisted_order
+except NameError:  # pragma: no cover
+    _v203_php_safe_allowlisted_order_prev_v204 = None
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v204 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v204 = None
+try:
+    _raw_php_danger_prev_v204 = _raw_php_danger
+except NameError:  # pragma: no cover
+    _raw_php_danger_prev_v204 = None
+
+
+def _v204_php_closed_match_assigned_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "php")
+    safe_vars: set[str] = set()
+
+    # Example:
+    #   $column = match (norm($q["sort"] ?? "created")) {
+    #       "email" => "email",
+    #       "status" => "status",
+    #       default => "created_at",
+    #   };
+    for m in re.finditer(
+        r"\$(\w+)\s*=\s*match\s*\([\s\S]{0,500}?\)\s*\{([\s\S]{0,1500}?)\}\s*;",
+        c,
+        re.I,
+    ):
+        var, body = m.group(1), m.group(2)
+        # An arm returning request/raw data is not a closed allowlist.
+        if re.search(r"=>\s*(?:\$_(?:GET|POST|REQUEST)\s*\[|\$request\b|\$q\s*\[|->input\s*\()", body, re.I):
+            continue
+        values = re.findall(r"=>\s*['\"]([A-Za-z_][A-Za-z0-9_\.]*)['\"]", body, re.I)
+        if len(values) >= 2:
+            safe_vars.add(var)
+
+    return safe_vars
+
+
+def _v204_php_closed_map_lookup_assigned_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "php")
+    safe_vars: set[str] = set()
+
+    # Example:
+    #   $allowed = ["created" => "created_at", "email" => "email"];
+    #   $sort = $allowed[norm($raw)] ?? "created_at";
+    closed_maps = set()
+    for m in re.finditer(r"\$(\w+)\s*=\s*\[[\s\S]{0,1200}?=>[\s\S]{0,1200}?\]\s*;", c, re.I):
+        closed_maps.add(m.group(1))
+
+    for m in re.finditer(
+        r"\$(\w+)\s*=\s*\$(\w+)\s*\[[^\]]+\]\s*\?\?\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]\s*;",
+        c,
+        re.I,
+    ):
+        out_var, map_var = m.group(1), m.group(2)
+        if map_var in closed_maps:
+            safe_vars.add(out_var)
+
+    return safe_vars
+
+
+def _v204_php_safe_helper_names(code: str) -> set[str]:
+    c = _strip_comments(code, "php")
+    helpers: set[str] = set()
+
+    # Example:
+    #   function pick_sort_column($raw): string {
+    #       $allowed = ["created" => "created_at", ...];
+    #       return $allowed[norm($raw)] ?? "created_at";
+    #   }
+    for m in re.finditer(
+        r"function\s+(\w+)\s*\([^)]*\)\s*(?::\s*[\w\\|?]+)?\s*\{([\s\S]{0,1800}?)\n\}",
+        c,
+        re.I,
+    ):
+        name, body = m.group(1), m.group(2)
+
+        # Directly returning raw request/user input is not safe.
+        if re.search(r"return\s+(?:\$_(?:GET|POST|REQUEST)\s*\[|\$request\b|\$q\s*\[|->input\s*\()", body, re.I):
+            continue
+
+        has_closed_map = bool(re.search(r"\$\w+\s*=\s*\[[\s\S]{0,1200}?=>[\s\S]{0,1200}?\]\s*;", body, re.I))
+        returns_map_lookup = bool(
+            re.search(
+                r"return\s+\$\w+\s*\[[^\]]+\]\s*\?\?\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]\s*;",
+                body,
+                re.I,
+            )
+        )
+        has_closed_match = bool(
+            re.search(
+                r"return\s+match\s*\([\s\S]{0,500}?\)\s*\{[\s\S]{0,1200}=>\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+                body,
+                re.I,
+            )
+        )
+
+        if (has_closed_map and returns_map_lookup) or has_closed_match:
+            helpers.add(name)
+
+    return helpers
+
+
+def _v204_php_helper_assigned_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "php")
+    safe_vars: set[str] = set()
+    helpers = _v204_php_safe_helper_names(c)
+
+    for helper in helpers:
+        for m in re.finditer(rf"\$(\w+)\s*=\s*(?:\$this->)?{re.escape(helper)}\s*\(", c, re.I):
+            safe_vars.add(m.group(1))
+
+    return safe_vars
+
+
+def _v204_php_safe_order_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "php")
+    safe_vars: set[str] = set()
+    safe_vars |= _v204_php_closed_match_assigned_vars(c)
+    safe_vars |= _v204_php_closed_map_lookup_assigned_vars(c)
+    safe_vars |= _v204_php_helper_assigned_vars(c)
+    return safe_vars
+
+
+def _v204_php_order_by_uses_direct_raw(code: str) -> bool:
+    c = _strip_comments(code, "php")
+    # Direct raw request/query input concatenated into ORDER BY.
+    return bool(
+        re.search(
+            r"ORDER\s+BY[\s\S]{0,420}\.\s*(?:\$_(?:GET|POST|REQUEST)\s*\[|\$request\b|\$q\s*\[|->input\s*\()",
+            c,
+            re.I,
+        )
+    )
+
+
+def _v204_php_order_by_uses_var(code: str, var: str) -> bool:
+    c = _strip_comments(code, "php")
+    return bool(re.search(rf"ORDER\s+BY[\s\S]{{0,420}}\.\s*\${re.escape(var)}\b", c, re.I))
+
+
+def _v204_php_safe_allowlisted_order(code: str) -> bool:
+    c = _strip_comments(code, "php")
+    if not re.search(r"ORDER\s+BY", c, re.I):
+        return False
+    if not _v20_has_sql_execution(c, "php"):
+        return False
+    if _v204_php_order_by_uses_direct_raw(c):
+        return False
+
+    safe_vars = _v204_php_safe_order_vars(c)
+    return any(_v204_php_order_by_uses_var(c, var) for var in safe_vars)
+
+
+def _v202_order_by_uses_raw_untrusted_identifier(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "php":
+        c = _strip_comments(code, "php")
+        if _v204_php_order_by_uses_direct_raw(c):
+            return True
+
+        safe_vars = _v204_php_safe_order_vars(c)
+
+        # If ORDER BY uses a proven closed-match/map/helper variable, do not
+        # classify that same variable as raw merely because its lookup key came
+        # from $q["sort"].
+        if any(_v204_php_order_by_uses_var(c, var) for var in safe_vars):
+            return False
+
+    return bool(
+        _v202_order_by_uses_raw_untrusted_identifier_prev_v204
+        and _v202_order_by_uses_raw_untrusted_identifier_prev_v204(code, language)
+    )
+
+
+def _v203_php_safe_allowlisted_order(code: str) -> bool:  # type: ignore[override]
+    if _v204_php_safe_allowlisted_order(code):
+        return True
+    return bool(
+        _v203_php_safe_allowlisted_order_prev_v204
+        and _v203_php_safe_allowlisted_order_prev_v204(code)
+    )
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "php" and _v204_php_safe_allowlisted_order(code):
+        return True
+    return bool(
+        _raw_safe_allowlisted_identifier_sql_prev_v204
+        and _raw_safe_allowlisted_identifier_sql_prev_v204(code, language)
+    )
+
+
+def _raw_php_danger(code: str) -> bool:  # type: ignore[override]
+    if _v204_php_safe_allowlisted_order(code):
+        return False
+    return bool(_raw_php_danger_prev_v204 and _raw_php_danger_prev_v204(code))
+
+# V20.5 raw allowlist regression fix
+# Goal:
+# Keep the SAFE allowlist improvements from V20.4, but prevent the safe
+# allowlist guard from hiding true IN_BAND cases where an allowlist/helper exists
+# in the file but the SQL actually uses raw input.
+#
+# This addresses regressions such as:
+# - *_allowlist_exists_but_raw_used
+# - *_whitelist_unused_raw_order
+# - *_raw_table_selector_decoy
+# - raw customer/search/filter SQL that happened to contain an allowlist elsewhere.
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v205 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v205 = None
+try:
+    _v202_order_by_uses_raw_untrusted_identifier_prev_v205 = _v202_order_by_uses_raw_untrusted_identifier
+except NameError:  # pragma: no cover
+    _v202_order_by_uses_raw_untrusted_identifier_prev_v205 = None
+try:
+    _raw_php_danger_prev_v205 = _raw_php_danger
+except NameError:  # pragma: no cover
+    _raw_php_danger_prev_v205 = None
+
+
+def _v205_sql_identifier_context_present(code: str) -> bool:
+    return bool(re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b", code, re.I))
+
+
+def _v205_var_used_in_sql_identifier_context(code: str, language: str, var: str) -> bool:
+    c = _strip_comments(code, language)
+    v = re.escape(var)
+
+    if language == "php":
+        return bool(
+            re.search(rf"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{{0,520}}\.\s*\${v}\b", c, re.I)
+            or re.search(rf"\$\w+\s*=\s*[^;]*\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^;]*\.\s*\${v}\b", c, re.I | re.S)
+        )
+
+    if language == "javascript":
+        return bool(
+            re.search(rf"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{{0,520}}(?:\$\{{\s*{v}\s*\}}|\+\s*{v}\b)", c, re.I)
+            or re.search(rf"(?:const|let|var)\s+\w+\s*=\s*[^;]*\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^;]*(?:\$\{{\s*{v}\s*\}}|\+\s*{v}\b)", c, re.I | re.S)
+        )
+
+    if language == "java":
+        return bool(
+            re.search(rf"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{{0,520}}\+\s*{v}\b", c, re.I)
+            or re.search(rf"\bString\s+\w+\s*=\s*[^;]*\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^;]*\+\s*{v}\b", c, re.I | re.S)
+        )
+
+    # Python
+    return bool(
+        re.search(rf"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^\n;]{{0,520}}(?:\+\s*{v}\b|\{{\s*{v}\s*\}})", c, re.I)
+        or re.search(rf"^\s*\w+\s*=\s*[^\n]*\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^\n]*(?:\+\s*{v}\b|\{{\s*{v}\s*\}})", c, re.I | re.M)
+    )
+
+
+def _v205_direct_raw_expr_in_sql_identifier_context(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+
+    if language == "php":
+        return bool(
+            re.search(
+                r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,520}\.\s*(?:\$_(?:GET|POST|REQUEST)\s*\[|\$request\b|\$q\s*\[|->input\s*\()",
+                c,
+                re.I,
+            )
+        )
+
+    if language == "javascript":
+        return bool(
+            re.search(
+                r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,520}(?:\$\{\s*(?:req|request)\.(?:query|params|body)\.|\+\s*(?:req|request)\.(?:query|params|body)\.)",
+                c,
+                re.I,
+            )
+        )
+
+    if language == "java":
+        return bool(
+            re.search(
+                r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,520}\+\s*(?:request\.getParameter\s*\(|req\.getParameter\s*\(|params\.get\s*\()",
+                c,
+                re.I,
+            )
+        )
+
+    return bool(
+        re.search(
+            r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^\n;]{0,520}(?:\{\s*(?:request\.|args\.get|params\.get|query\.get)|\+\s*(?:request\.|args\.get|params\.get|query\.get))",
+            c,
+            re.I,
+        )
+    )
+
+
+def _v205_common_untrusted_identifier_vars(code: str, language: str) -> set[str]:
+    c = _strip_comments(code, language)
+    out: set[str] = set()
+
+    # Raw variables introduced by direct request access.
+    assignments = _v202_assignment_exprs(c, language)
+    for var, expr in assignments.items():
+        if _v202_expr_is_raw_request(expr, language):
+            out.add(var)
+
+    out |= _v202_raw_helper_return_vars(c, language)
+
+    # Method/function parameters with typical identifier names are untrusted
+    # unless we can prove that a different allowlisted variable reaches SQL.
+    common = r"(?:raw|unsafe|requested|request(?:ed)?Sort|sort|orderBy|order|field|column|table|tableName|entity|resource|targetTable|filter|where|clause)"
+    if language == "php":
+        for m in re.finditer(rf"function\s+\w+\s*\([^)]*\$(\w+)[^)]*\)", c, re.I):
+            if re.fullmatch(common, m.group(1), re.I):
+                out.add(m.group(1))
+        for m in re.finditer(r"\$(raw|unsafe|requested|sort|orderBy|order|field|column|table|tableName|filter|where|clause)\b", c, re.I):
+            out.add(m.group(1))
+
+    elif language == "javascript":
+        for m in re.finditer(rf"function\s+\w+\s*\(([^)]*)\)", c, re.I):
+            for name in re.findall(r"\b([A-Za-z_]\w*)\b", m.group(1)):
+                if re.fullmatch(common, name, re.I):
+                    out.add(name)
+        for m in re.finditer(rf"\(([^)]*)\)\s*=>", c, re.I):
+            for name in re.findall(r"\b([A-Za-z_]\w*)\b", m.group(1)):
+                if re.fullmatch(common, name, re.I):
+                    out.add(name)
+
+    elif language == "java":
+        for m in re.finditer(rf"\bString\s+(\w+)\b", c, re.I):
+            if re.fullmatch(common, m.group(1), re.I):
+                out.add(m.group(1))
+        for m in re.finditer(rf"\b(?:Map|Object|var)\s+(\w+)\b", c, re.I):
+            if re.fullmatch(common, m.group(1), re.I):
+                out.add(m.group(1))
+
+    else:
+        for m in re.finditer(rf"def\s+\w+\s*\(([^)]*)\)", c, re.I):
+            for name in re.findall(r"\b([A-Za-z_]\w*)\b", m.group(1)):
+                if re.fullmatch(common, name, re.I):
+                    out.add(name)
+        for m in re.finditer(rf"\b(raw|unsafe|requested|sort|order_by|orderBy|order|field|column|table|table_name|filter|where|clause)\b", c, re.I):
+            out.add(m.group(1))
+
+    return out
+
+
+def _v205_safe_identifier_vars(code: str, language: str) -> set[str]:
+    c = _strip_comments(code, language)
+    safe: set[str] = set()
+
+    assignments = _v202_assignment_exprs(c, language)
+    for var, expr in assignments.items():
+        if _v202_expr_is_safely_allowlisted(expr, language):
+            safe.add(var)
+
+    if language == "php":
+        try:
+            safe |= _v204_php_safe_order_vars(c)
+        except Exception:
+            pass
+
+    return safe
+
+
+def _v205_raw_identifier_reaches_sql(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if not _v205_sql_identifier_context_present(c):
+        return False
+    if not _v20_has_sql_execution(c, language):
+        return False
+
+    if _v205_direct_raw_expr_in_sql_identifier_context(c, language):
+        return True
+
+    safe_vars = _v205_safe_identifier_vars(c, language)
+    raw_vars = _v205_common_untrusted_identifier_vars(c, language)
+
+    for var in raw_vars:
+        if var in safe_vars:
+            continue
+        if _v205_var_used_in_sql_identifier_context(c, language, var):
+            return True
+
+    # If the SQL itself clearly uses a property/index lookup as the identifier,
+    # that is raw unless it was first reduced to a safe variable.
+    if language == "php":
+        if re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,520}\.\s*\$\w+\s*\[", c, re.I):
+            return True
+    elif language == "javascript":
+        if re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,520}(?:\$\{\s*\w+\[[^\]]+\]|\+\s*\w+\[[^\]]+\])", c, re.I):
+            return True
+    elif language == "java":
+        if re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,520}\+\s*\w+\.get\s*\(", c, re.I):
+            return True
+    else:
+        if re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^\n;]{0,520}(?:\+\s*\w+\[[^\]]+\]|\{\s*\w+\[[^\]]+\])", c, re.I):
+            return True
+
+    return False
+
+
+def _v202_order_by_uses_raw_untrusted_identifier(code: str, language: str) -> bool:  # type: ignore[override]
+    if _v205_raw_identifier_reaches_sql(code, language):
+        return True
+    return bool(
+        _v202_order_by_uses_raw_untrusted_identifier_prev_v205
+        and _v202_order_by_uses_raw_untrusted_identifier_prev_v205(code, language)
+    )
+
+
+def _v205_exact_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if _v205_raw_identifier_reaches_sql(c, language):
+        return False
+    if language == "php":
+        try:
+            if _v204_php_safe_allowlisted_order(c):
+                return True
+        except Exception:
+            pass
+    try:
+        if _v202_safe_allowlisted_identifier_sql(c, language):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    # Final strict gate: never let the broad allowlist detector hide an
+    # actual raw identifier concatenation into SQL syntax.
+    return _v205_exact_safe_allowlisted_identifier_sql(code, language)
+
+
+def _raw_php_danger(code: str) -> bool:  # type: ignore[override]
+    if _v205_exact_safe_allowlisted_identifier_sql(code, "php"):
+        return False
+    return bool(_raw_php_danger_prev_v205 and _raw_php_danger_prev_v205(code))
+
+# V20.6 balanced allowlist + ORM bind fix
+# Goal:
+# V20.5 fixed raw-used regressions but became too strict and stopped accepting
+# true SAFE allowlisted ORDER BY patterns in the new comprehensive suite.
+#
+# V20.6 proves the exact SQL identifier variable by tracking:
+#   helper/raw -> safe object -> safe property -> alias -> ORDER BY/GROUP BY/FROM.
+#
+# It also accepts safe JS ORM bind/replacements style queries.
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v206 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v206 = None
+try:
+    _raw_safe_query_builder_prev_v206 = _raw_safe_query_builder
+except NameError:  # pragma: no cover
+    _raw_safe_query_builder_prev_v206 = None
+try:
+    _raw_js_safe_sequelize_replacements_prev_v206 = _raw_js_safe_sequelize_replacements
+except NameError:  # pragma: no cover
+    _raw_js_safe_sequelize_replacements_prev_v206 = None
+try:
+    _v202_order_by_uses_raw_untrusted_identifier_prev_v206 = _v202_order_by_uses_raw_untrusted_identifier
+except NameError:  # pragma: no cover
+    _v202_order_by_uses_raw_untrusted_identifier_prev_v206 = None
+try:
+    _raw_php_danger_prev_v206 = _raw_php_danger
+except NameError:  # pragma: no cover
+    _raw_php_danger_prev_v206 = None
+try:
+    _raw_python_raw_concat_executed_prev_v206 = _raw_python_raw_concat_executed
+except NameError:  # pragma: no cover
+    _raw_python_raw_concat_executed_prev_v206 = None
+try:
+    _raw_js_inband_danger_prev_v206 = _raw_js_inband_danger
+except NameError:  # pragma: no cover
+    _raw_js_inband_danger_prev_v206 = None
+
+
+def _v206_identifier_context_present(code: str) -> bool:
+    return bool(re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b", code, re.I))
+
+
+def _v206_python_safe_helper_names(code: str) -> set[str]:
+    c = _strip_comments(code, "python")
+    helpers: set[str] = set()
+    for m in re.finditer(r"def\s+(\w+)\s*\([^)]*\)\s*:\s*([\s\S]{0,1600}?)(?=\ndef\s+|\nclass\s+|\Z)", c, re.I):
+        name, body = m.group(1), m.group(2)
+        if re.search(r"\ballowed\s*=\s*\{[\s\S]{0,600}\}", body, re.I) and re.search(
+            r"return\s+\{[^}]*['\"]column['\"]\s*:\s*\w+\.get\s*\([^)]*,\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]\s*\)",
+            body,
+            re.I,
+        ):
+            helpers.add(name)
+        elif re.search(r"\ballowed\s*=\s*\{[\s\S]{0,600}\}", body, re.I) and re.search(
+            r"return\s+\w+\.get\s*\([^)]*,\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]\s*\)",
+            body,
+            re.I,
+        ):
+            helpers.add(name)
+    return helpers
+
+
+def _v206_js_safe_helper_names(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    helpers: set[str] = set()
+    for m in re.finditer(r"function\s+(\w+)\s*\([^)]*\)\s*\{([\s\S]{0,1400}?)\}", c, re.I):
+        name, body = m.group(1), m.group(2)
+        has_closed_map = bool(re.search(r"\b(?:const|let|var)\s+\w+\s*=\s*\{[\s\S]{0,600}:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I))
+        returns_column = bool(re.search(r"return\s+\{\s*column\s*:\s*\w+\s*\[[^\]]+\]\s*\|\|\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I))
+        returns_value = bool(re.search(r"return\s+\w+\s*\[[^\]]+\]\s*\|\|\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I))
+        if has_closed_map and (returns_column or returns_value):
+            helpers.add(name)
+    return helpers
+
+
+def _v206_safe_objects(code: str, language: str) -> set[str]:
+    c = _strip_comments(code, language)
+    out: set[str] = set()
+
+    if language == "python":
+        helpers = _v206_python_safe_helper_names(c)
+        if helpers:
+            for h in helpers:
+                for m in re.finditer(rf"\b(\w+)\s*=\s*{re.escape(h)}\s*\(", c, re.I):
+                    out.add(m.group(1))
+
+    elif language == "javascript":
+        helpers = _v206_js_safe_helper_names(c)
+        if helpers:
+            for h in helpers:
+                for m in re.finditer(rf"\b(?:const|let|var)\s+(\w+)\s*=\s*{re.escape(h)}\s*\(", c, re.I):
+                    out.add(m.group(1))
+
+    return out
+
+
+def _v206_safe_identifier_vars(code: str, language: str) -> set[str]:
+    c = _strip_comments(code, language)
+    safe: set[str] = set()
+    safe_objects = _v206_safe_objects(c, language)
+    assignments = _v202_assignment_exprs(c, language)
+
+    if language == "php":
+        try:
+            safe |= _v204_php_safe_order_vars(c)
+        except Exception:
+            pass
+
+    # Iterative propagation: safe expression/property -> alias -> alias...
+    for _ in range(8):
+        changed = False
+        for var, expr in assignments.items():
+            e = expr.strip()
+            is_safe = False
+
+            if var in safe:
+                continue
+
+            if _v202_expr_is_safely_allowlisted(e, language):
+                is_safe = True
+
+            if language == "python":
+                # selected = info["column"] where info came from safe helper.
+                for obj in safe_objects:
+                    if re.search(rf"\b{re.escape(obj)}\s*\[\s*['\"](?:column|field|sort|order)['\"]\s*\]", e, re.I):
+                        is_safe = True
+                # selected = allowed.get(raw, "created_at")
+                if re.search(r"\b\w+\s*\.get\s*\([^)]*,\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]\s*\)", e, re.I) and re.search(r"\ballowed\b|\bcols\b|\bcolumns\b|\bfields\b", c, re.I):
+                    is_safe = True
+                # final = selected
+                if re.fullmatch(r"[A-Za-z_]\w*", e) and e in safe:
+                    is_safe = True
+
+            elif language == "javascript":
+                for obj in safe_objects:
+                    if re.search(rf"\b{re.escape(obj)}\s*\.\s*(?:column|field|sort|order)\b", e, re.I):
+                        is_safe = True
+                    if re.search(rf"\b{re.escape(obj)}\s*\[\s*['\"](?:column|field|sort|order)['\"]\s*\]", e, re.I):
+                        is_safe = True
+                if re.search(r"\b\w+\s*\[[^\]]+\]\s*\|\|\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I) and re.search(r"\b(?:const|let|var)\s+\w+\s*=\s*\{[\s\S]{0,900}:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", c, re.I):
+                    is_safe = True
+                if re.fullmatch(r"[A-Za-z_]\w*", e) and e in safe:
+                    is_safe = True
+
+            elif language == "java":
+                # String selected = A.contains(sort) ? sort : "created_at";
+                if re.search(r"\.\s*contains\s*\(\s*\w+\s*\)\s*\?\s*\w+\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I):
+                    is_safe = True
+                if re.search(r"\b(?:Map|Set)\.of\s*\(", c, re.I) and re.search(r"\.getOrDefault\s*\([^)]*,\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I):
+                    is_safe = True
+                if re.fullmatch(r"[A-Za-z_]\w*", e) and e in safe:
+                    is_safe = True
+
+            elif language == "php":
+                # $selected = $this->cols[...] ?? "created_at";
+                if re.search(r"\$(?:this->)?\w+\s*\[[^\]]+\]\s*\?\?\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I):
+                    is_safe = True
+                # $selected = $allowed[...] ?? "created_at";
+                if re.search(r"\$\w+\s*\[[^\]]+\]\s*\?\?\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I) and re.search(r"(?:private\s+array\s+\$\w+|\$\w+\s*=\s*\[[\s\S]{0,900}=>)", c, re.I):
+                    is_safe = True
+                # $final = $selected
+                if re.fullmatch(r"\$?[A-Za-z_]\w*", e):
+                    alias = e[1:] if e.startswith("$") else e
+                    if alias in safe:
+                        is_safe = True
+
+            if is_safe:
+                safe.add(var)
+                changed = True
+
+        if not changed:
+            break
+
+    return safe
+
+
+def _v206_vars_used_in_identifier_context(code: str, language: str) -> set[str]:
+    c = _strip_comments(code, language)
+    used: set[str] = set()
+
+    if language == "php":
+        for m in re.finditer(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,620}\.\s*\$([A-Za-z_]\w*)\b", c, re.I):
+            used.add(m.group(1))
+
+    elif language == "javascript":
+        for m in re.finditer(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,620}(?:\+\s*([A-Za-z_]\w*)\b|\$\{\s*([A-Za-z_]\w*)\s*\})", c, re.I):
+            used.update(x for x in m.groups() if x)
+
+    elif language == "java":
+        for m in re.finditer(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,620}\+\s*([A-Za-z_]\w*)\b", c, re.I):
+            used.add(m.group(1))
+
+    else:
+        for m in re.finditer(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^\n;]{0,620}(?:\+\s*([A-Za-z_]\w*)\b|\{\s*([A-Za-z_]\w*)\s*\})", c, re.I):
+            used.update(x for x in m.groups() if x)
+
+    return used
+
+
+def _v206_direct_raw_identifier_in_sql(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+
+    if language == "php":
+        return bool(re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,620}\.\s*(?:\$_(?:GET|POST|REQUEST)\s*\[|\$request\b|\$q\s*\[|->input\s*\()", c, re.I))
+
+    if language == "javascript":
+        return bool(re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,620}(?:\+\s*(?:req|request)\.(?:query|params|body)\.|\$\{\s*(?:req|request)\.(?:query|params|body)\.)", c, re.I))
+
+    if language == "java":
+        return bool(re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,620}\+\s*(?:request\.getParameter\s*\(|req\.getParameter\s*\(|params\.get\s*\()", c, re.I))
+
+    return bool(re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^\n;]{0,620}(?:\+\s*(?:request\.|args\.get|params\.get|query\.get)|\{\s*(?:request\.|args\.get|params\.get|query\.get))", c, re.I))
+
+
+def _v206_common_raw_vars(code: str, language: str) -> set[str]:
+    c = _strip_comments(code, language)
+    raw: set[str] = set()
+
+    assignments = _v202_assignment_exprs(c, language)
+    for var, expr in assignments.items():
+        if _v202_expr_is_raw_request(expr, language):
+            raw.add(var)
+
+    try:
+        raw |= _v202_raw_helper_return_vars(c, language)
+    except Exception:
+        pass
+
+    common = r"(?:raw|unsafe|requested|requestedSort|sort|orderBy|order|field|column|table|tableName|entity|resource|targetTable|filter|where|clause)"
+    if language == "php":
+        for m in re.finditer(r"\$(raw|unsafe|requested|sort|orderBy|order|field|column|table|tableName|filter|where|clause)\b", c, re.I):
+            raw.add(m.group(1))
+    elif language == "javascript":
+        for m in re.finditer(r"\b(raw|unsafe|requested|requestedSort|sort|orderBy|order|field|column|table|tableName|filter|where|clause)\b", c, re.I):
+            raw.add(m.group(1))
+    elif language == "java":
+        for m in re.finditer(r"\b(?:String|var|Object)\s+(raw|unsafe|requested|sort|orderBy|order|field|column|table|tableName|filter|where|clause)\b", c, re.I):
+            raw.add(m.group(1))
+    else:
+        for m in re.finditer(r"\b(raw|unsafe|requested|sort|order_by|orderBy|order|field|column|table|table_name|filter|where|clause)\b", c, re.I):
+            raw.add(m.group(1))
+
+    return raw
+
+
+def _v206_raw_identifier_reaches_sql(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if not _v206_identifier_context_present(c):
+        return False
+    if not _v20_has_sql_execution(c, language):
+        return False
+
+    if _v206_direct_raw_identifier_in_sql(c, language):
+        return True
+
+    used = _v206_vars_used_in_identifier_context(c, language)
+    safe = _v206_safe_identifier_vars(c, language)
+    raw = _v206_common_raw_vars(c, language)
+
+    for var in used:
+        if var in safe:
+            continue
+        if var in raw:
+            return True
+
+    # Index/property access directly in SQL is raw unless reduced into a safe variable first.
+    if language == "php" and re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,620}\.\s*\$\w+\s*\[", c, re.I):
+        return True
+    if language == "javascript" and re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,620}(?:\+\s*\w+\[[^\]]+\]|\$\{\s*\w+\[[^\]]+\])", c, re.I):
+        return True
+    if language == "java" and re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,620}\+\s*\w+\.get\s*\(", c, re.I):
+        return True
+    if language == "python" and re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^\n;]{0,620}(?:\+\s*\w+\[[^\]]+\]|\{\s*\w+\[[^\]]+\])", c, re.I):
+        return True
+
+    return False
+
+
+def _v206_exact_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:
+    c = _strip_comments(code, language)
+    if not _v206_identifier_context_present(c):
+        return False
+    if not _v20_has_sql_execution(c, language):
+        return False
+    if _v206_raw_identifier_reaches_sql(c, language):
+        return False
+
+    used = _v206_vars_used_in_identifier_context(c, language)
+    safe = _v206_safe_identifier_vars(c, language)
+
+    if used and used.issubset(safe):
+        return True
+
+    # Keep V20.4 PHP match/helper direct proof.
+    if language == "php":
+        try:
+            if _v204_php_safe_allowlisted_order(c):
+                return True
+        except Exception:
+            pass
+
+    return False
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    return _v206_exact_safe_allowlisted_identifier_sql(code, language)
+
+
+def _v202_order_by_uses_raw_untrusted_identifier(code: str, language: str) -> bool:  # type: ignore[override]
+    if _v206_exact_safe_allowlisted_identifier_sql(code, language):
+        return False
+    if _v206_raw_identifier_reaches_sql(code, language):
+        return True
+    return bool(
+        _v202_order_by_uses_raw_untrusted_identifier_prev_v206
+        and _v202_order_by_uses_raw_untrusted_identifier_prev_v206(code, language)
+    )
+
+
+def _raw_js_safe_sequelize_replacements(code: str) -> bool:  # type: ignore[override]
+    c = _strip_comments(code, "javascript")
+    if not re.search(r"\.\s*query\s*\(", c, re.I):
+        return False
+    if not re.search(r"\b(?:bind|replacements)\s*:", c, re.I):
+        return False
+
+    static_query_with_named_params = bool(
+        re.search(
+            r"\.\s*query\s*\(\s*(['\"])(?=[\s\S]{0,120}\b(?:SELECT|UPDATE|DELETE|INSERT)\b)[\s\S]{0,900}(?::[A-Za-z_]\w*|\$[A-Za-z_]\w*)[\s\S]{0,900}\1\s*,\s*\{[\s\S]{0,400}\b(?:bind|replacements)\s*:",
+            c,
+            re.I,
+        )
+    )
+    unsafe_interpolation = bool(re.search(r"\.\s*query\s*\(\s*`[\s\S]{0,900}\$\{", c, re.I))
+    unsafe_concat = bool(re.search(r"\.\s*query\s*\(\s*(['\"])[\s\S]{0,900}\1\s*\+", c, re.I))
+    return static_query_with_named_params and not unsafe_interpolation and not unsafe_concat
+
+
+def _raw_safe_query_builder(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "javascript" and _raw_js_safe_sequelize_replacements(code):
+        return True
+    if _v206_exact_safe_allowlisted_identifier_sql(code, language):
+        return True
+    return bool(_raw_safe_query_builder_prev_v206 and _raw_safe_query_builder_prev_v206(code, language))
+
+
+def _raw_php_danger(code: str) -> bool:  # type: ignore[override]
+    if _v206_exact_safe_allowlisted_identifier_sql(code, "php"):
+        return False
+    return bool(_raw_php_danger_prev_v206 and _raw_php_danger_prev_v206(code))
+
+
+def _raw_python_raw_concat_executed(code: str) -> bool:  # type: ignore[override]
+    if _v206_exact_safe_allowlisted_identifier_sql(code, "python"):
+        return False
+    return bool(_raw_python_raw_concat_executed_prev_v206 and _raw_python_raw_concat_executed_prev_v206(code))
+
+
+def _raw_js_inband_danger(code: str) -> bool:  # type: ignore[override]
+    if _raw_js_safe_sequelize_replacements(code):
+        return False
+    if _v206_exact_safe_allowlisted_identifier_sql(code, "javascript"):
+        return False
+    return bool(_raw_js_inband_danger_prev_v206 and _raw_js_inband_danger_prev_v206(code))

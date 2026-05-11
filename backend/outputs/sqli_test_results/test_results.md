@@ -1,193 +1,52 @@
 # SQLi Test Suite Results
 
-- Total: **80**
-- Passed: **67**
-- Failed: **13**
+- Total: **28**
+- Passed: **26**
+- Failed: **2**
 
 | # | File | Expected | Actual | Risk | Pass |
 |---:|---|---|---|---:|---|
-| 1 | `python/001_SAFE_stress_py.py` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 2 | `python/002_SAFE_stress_py.py` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 3 | `python/003_SAFE_stress_py.py` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 4 | `python/004_SAFE_stress_py.py` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 5 | `python/005_SAFE_stress_py.py` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 6 | `python/006_IN_BAND_stress_py.py` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 7 | `python/007_IN_BAND_stress_py.py` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 8 | `python/008_IN_BAND_stress_py.py` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 9 | `python/009_IN_BAND_stress_py.py` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 10 | `python/010_IN_BAND_stress_py.py` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 11 | `python/011_BLIND_stress_py.py` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 12 | `python/012_BLIND_stress_py.py` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 13 | `python/013_BLIND_stress_py.py` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 14 | `python/014_BLIND_stress_py.py` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 15 | `python/015_BLIND_stress_py.py` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 16 | `python/016_SECOND_ORDER_stress_py.py` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
-| 17 | `python/017_SECOND_ORDER_stress_py.py` | VULNERABLE / SECOND_ORDER | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 18 | `python/018_SECOND_ORDER_stress_py.py` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
-| 19 | `python/019_SECOND_ORDER_stress_py.py` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
-| 20 | `python/020_SECOND_ORDER_stress_py.py` | VULNERABLE / SECOND_ORDER | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 21 | `javascript/021_SAFE_stress_js.js` | SAFE / NONE | SAFE / NONE | 0.0004 | ✅ |
-| 22 | `javascript/022_SAFE_stress_js.js` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 23 | `javascript/023_SAFE_stress_js.js` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 24 | `javascript/024_SAFE_stress_js.js` | SAFE / NONE | SAFE / NONE | 0.0001 | ✅ |
-| 25 | `javascript/025_SAFE_stress_js.js` | SAFE / NONE | SAFE / NONE | 0.0157 | ✅ |
-| 26 | `javascript/026_IN_BAND_stress_js.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
-| 27 | `javascript/027_IN_BAND_stress_js.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
-| 28 | `javascript/028_IN_BAND_stress_js.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
-| 29 | `javascript/029_IN_BAND_stress_js.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 30 | `javascript/030_IN_BAND_stress_js.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9774 | ✅ |
-| 31 | `javascript/031_BLIND_stress_js.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9998 | ✅ |
-| 32 | `javascript/032_BLIND_stress_js.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 33 | `javascript/033_BLIND_stress_js.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 34 | `javascript/034_BLIND_stress_js.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
-| 35 | `javascript/035_BLIND_stress_js.js` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
-| 36 | `javascript/036_SECOND_ORDER_stress_js.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
-| 37 | `javascript/037_SECOND_ORDER_stress_js.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9999 | ✅ |
-| 38 | `javascript/038_SECOND_ORDER_stress_js.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / IN_BAND | 1.0 | ❌ |
-| 39 | `javascript/039_SECOND_ORDER_stress_js.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9999 | ✅ |
-| 40 | `javascript/040_SECOND_ORDER_stress_js.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
-| 41 | `java/041_SAFE_stress_java.java` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
-| 42 | `java/042_SAFE_stress_java.java` | SAFE / NONE | VULNERABLE / IN_BAND | 1.0 | ❌ |
-| 43 | `java/043_SAFE_stress_java.java` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
-| 44 | `java/044_SAFE_stress_java.java` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 45 | `java/045_SAFE_stress_java.java` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
-| 46 | `java/046_IN_BAND_stress_java.java` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 47 | `java/047_IN_BAND_stress_java.java` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 48 | `java/048_IN_BAND_stress_java.java` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 49 | `java/049_IN_BAND_stress_java.java` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 50 | `java/050_IN_BAND_stress_java.java` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
-| 51 | `java/051_BLIND_stress_java.java` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 52 | `java/052_BLIND_stress_java.java` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 53 | `java/053_BLIND_stress_java.java` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 54 | `java/054_BLIND_stress_java.java` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 55 | `java/055_BLIND_stress_java.java` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 56 | `java/056_SECOND_ORDER_stress_java.java` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
-| 57 | `java/057_SECOND_ORDER_stress_java.java` | VULNERABLE / SECOND_ORDER | VULNERABLE / IN_BAND | 1.0 | ❌ |
-| 58 | `java/058_SECOND_ORDER_stress_java.java` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
-| 59 | `java/059_SECOND_ORDER_stress_java.java` | VULNERABLE / SECOND_ORDER | VULNERABLE / IN_BAND | 1.0 | ❌ |
-| 60 | `java/060_SECOND_ORDER_stress_java.java` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
-| 61 | `php/061_SAFE_stress_php.php` | SAFE / NONE | SAFE / NONE |  | ✅ |
-| 62 | `php/062_SAFE_stress_php.php` | SAFE / NONE | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 63 | `php/063_SAFE_stress_php.php` | SAFE / NONE | SAFE / NONE |  | ✅ |
-| 64 | `php/064_SAFE_stress_php.php` | SAFE / NONE | SAFE / NONE |  | ✅ |
-| 65 | `php/065_SAFE_stress_php.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
-| 66 | `php/066_IN_BAND_stress_php.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9999 | ✅ |
-| 67 | `php/067_IN_BAND_stress_php.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9921 | ✅ |
-| 68 | `php/068_IN_BAND_stress_php.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9996 | ✅ |
-| 69 | `php/069_IN_BAND_stress_php.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
-| 70 | `php/070_IN_BAND_stress_php.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9999 | ✅ |
-| 71 | `php/071_BLIND_stress_php.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 72 | `php/072_BLIND_stress_php.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 73 | `php/073_BLIND_stress_php.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 74 | `php/074_BLIND_stress_php.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 0.9 | ✅ |
-| 75 | `php/075_BLIND_stress_php.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
-| 76 | `php/076_SECOND_ORDER_stress_php.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
-| 77 | `php/077_SECOND_ORDER_stress_php.php` | VULNERABLE / SECOND_ORDER | SAFE / NONE | 0.0036 | ❌ |
-| 78 | `php/078_SECOND_ORDER_stress_php.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / IN_BAND | 0.9 | ❌ |
-| 79 | `php/079_SECOND_ORDER_stress_php.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / IN_BAND | 1.0 | ❌ |
-| 80 | `php/080_SECOND_ORDER_stress_php.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
+| 1 | `javascript/001_SAFE_object_map_order_exact_var.js` | SAFE / NONE | SAFE / NONE | 0.0001 | ✅ |
+| 2 | `javascript/002_SAFE_map_get_order_exact_var.js` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
+| 3 | `javascript/003_SAFE_helper_pick_sort_order.js` | SAFE / NONE | SAFE / NONE | 0.0001 | ✅ |
+| 4 | `javascript/004_SAFE_set_has_order_exact_var.js` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
+| 5 | `javascript/005_IN_BAND_object_map_computed_but_raw_used.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 6 | `javascript/006_IN_BAND_set_has_but_raw_used.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 7 | `javascript/007_SECOND_ORDER_saved_segment_where_clause.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
+| 8 | `javascript/008_SECOND_ORDER_cached_filter_sql.js` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 0.9 | ✅ |
+| 9 | `javascript/009_IN_BAND_direct_saved_segment_name_raw.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 1.0 | ✅ |
+| 10 | `javascript/010_SAFE_db_loaded_value_as_param_not_fragment.js` | SAFE / NONE | SAFE / NONE | 0.0209 | ✅ |
+| 11 | `javascript/011_SAFE_sequelize_replacements_named.js` | SAFE / NONE | SAFE / NONE | 0.0001 | ✅ |
+| 12 | `javascript/012_IN_BAND_sequelize_template_raw.js` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9 | ✅ |
+| 13 | `php/013_SAFE_array_whitelist_order_exact_var.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
+| 14 | `php/014_SAFE_local_array_whitelist_order.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
+| 15 | `php/015_SAFE_match_expression_order.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
+| 16 | `php/016_SAFE_helper_pick_sort_order.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
+| 17 | `php/017_IN_BAND_array_whitelist_computed_but_raw_used.php` | VULNERABLE / IN_BAND | SAFE / NONE | 0.08 | ❌ |
+| 18 | `php/018_IN_BAND_helper_safe_but_raw_used.php` | VULNERABLE / IN_BAND | SAFE / NONE | 0.08 | ❌ |
+| 19 | `php/019_BLIND_count_alias_c_gt_zero.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
+| 20 | `php/020_BLIND_fetch_assoc_row_exists.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
+| 21 | `php/021_BLIND_num_rows_gt_zero.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
+| 22 | `php/022_BLIND_helper_returns_bool.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
+| 23 | `php/023_BLIND_feature_flag_enabled.php` | VULNERABLE / BLIND | VULNERABLE / BLIND | 1.0 | ✅ |
+| 24 | `php/024_IN_BAND_raw_search_fetch_all.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9999 | ✅ |
+| 25 | `php/025_IN_BAND_raw_count_displayed_as_data.php` | VULNERABLE / IN_BAND | VULNERABLE / IN_BAND | 0.9999 | ✅ |
+| 26 | `php/026_SAFE_parameterized_count_bool.php` | SAFE / NONE | SAFE / NONE | 0.08 | ✅ |
+| 27 | `php/027_SAFE_static_pdo_query_no_input.php` | SAFE / NONE | SAFE / NONE | 0.25 | ✅ |
+| 28 | `php/028_SECOND_ORDER_saved_filter_where_clause.php` | VULNERABLE / SECOND_ORDER | VULNERABLE / SECOND_ORDER | 1.0 | ✅ |
 
 ## Failures
 
-### `python/002_SAFE_stress_py.py`
+### `php/017_IN_BAND_array_whitelist_computed_but_raw_used.php`
 
-- Expected: `SAFE / NONE`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 5 chunk(s) — worst chunk scored 90%.
-
-### `python/017_SECOND_ORDER_stress_py.py`
-
-- Expected: `VULNERABLE / SECOND_ORDER`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 4 chunk(s) — worst chunk scored 90%.
-
-### `python/020_SECOND_ORDER_stress_py.py`
-
-- Expected: `VULNERABLE / SECOND_ORDER`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 4 chunk(s) — worst chunk scored 90%.
-
-### `javascript/022_SAFE_stress_js.js`
-
-- Expected: `SAFE / NONE`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 1 chunk(s) — worst chunk scored 90%.
-
-### `javascript/023_SAFE_stress_js.js`
-
-- Expected: `SAFE / NONE`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Patterns: `FSTRING_SQL`
-- Explanation: SQL injection pattern detected: FSTRING_SQL. Risk score: 90%. File analysed in 1 chunk(s) — worst chunk scored 90%.
-
-### `javascript/038_SECOND_ORDER_stress_js.js`
-
-- Expected: `VULNERABLE / SECOND_ORDER`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `1.0`
-- Patterns: `SQL_CONCAT | UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected: SQL_CONCAT + UNSAFE_EXEC. Risk score: 100%. File analysed in 1 chunk(s) — worst chunk scored 100%.
-
-### `java/042_SAFE_stress_java.java`
-
-- Expected: `SAFE / NONE`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `1.0`
-- Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 100%. File analysed in 3 chunk(s) — worst chunk scored 100%.
-
-### `java/057_SECOND_ORDER_stress_java.java`
-
-- Expected: `VULNERABLE / SECOND_ORDER`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `1.0`
-- Patterns: `SQL_CONCAT | UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected: SQL_CONCAT + UNSAFE_EXEC. Risk score: 100%. File analysed in 1 chunk(s) — worst chunk scored 100%.
-
-### `java/059_SECOND_ORDER_stress_java.java`
-
-- Expected: `VULNERABLE / SECOND_ORDER`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `1.0`
-- Patterns: `SQL_CONCAT | UNSAFE_EXEC`
-- Explanation: SQL injection pattern detected: SQL_CONCAT + UNSAFE_EXEC. Risk score: 100%. File analysed in 1 chunk(s) — worst chunk scored 100%.
-
-### `php/062_SAFE_stress_php.php`
-
-- Expected: `SAFE / NONE`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 1 chunk(s) — worst chunk scored 90%.
-
-### `php/077_SECOND_ORDER_stress_php.php`
-
-- Expected: `VULNERABLE / SECOND_ORDER`
+- Expected: `VULNERABLE / IN_BAND`
 - Actual: `SAFE / NONE`
-- Risk score: `0.0036`
-- Explanation: No SQL injection patterns detected. Risk score: 0%.
+- Risk score: `0.08`
+- Explanation: No SQL injection patterns detected. Risk score: 8%.
 
-### `php/078_SECOND_ORDER_stress_php.php`
+### `php/018_IN_BAND_helper_safe_but_raw_used.php`
 
-- Expected: `VULNERABLE / SECOND_ORDER`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `0.9`
-- Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 90%. File analysed in 1 chunk(s) — worst chunk scored 90%.
-
-### `php/079_SECOND_ORDER_stress_php.php`
-
-- Expected: `VULNERABLE / SECOND_ORDER`
-- Actual: `VULNERABLE / IN_BAND`
-- Risk score: `1.0`
-- Patterns: `SQL_CONCAT`
-- Explanation: SQL injection pattern detected: SQL_CONCAT. Risk score: 100%. File analysed in 1 chunk(s) — worst chunk scored 100%.
+- Expected: `VULNERABLE / IN_BAND`
+- Actual: `SAFE / NONE`
+- Risk score: `0.08`
+- Explanation: No SQL injection patterns detected. Risk score: 8%.

@@ -1,7 +1,8 @@
+# V20_TRAINING_NOTEBOOK_SOURCE_DIRECT_REPLACEMENT_MARKER
 # Auto-exported from model1_detection_aligned.ipynb — V18 semantic-flow-input
 # Run in Google Colab after uploading vocabulary.json and training_data.npz.
 
-# # Model 1 Detection — ML-primary v17
+# # Model 1 Detection — ML-primary V18-ML95
 #
 # This version focuses on stronger ML ownership of the final decision: sequence length 256, attack-type loss emphasis, live graphs, and training data enriched for Java safe builders, Python/PHP BLIND, and PHP SECOND_ORDER.
 
@@ -27,7 +28,7 @@
 # - prove that ML inference runs before fusion.
 
 """
-MODEL 1 — SQL Injection Detection ML-Primary v17 ADVERSARIAL-FLOW (CNN + Bi-LSTM, dual-head)
+MODEL 1 — SQL Injection Detection ML-Primary V18-ML95 ADVERSARIAL-FLOW (CNN + Bi-LSTM, dual-head)
 ============================================================
 Architecture (matches project proposal page 8 + page 31 + Gap A review):
   Raw Code → Clean → Tokenize → Normalize → Vectorize
@@ -37,7 +38,7 @@ Architecture (matches project proposal page 8 + page 31 + Gap A review):
 
 Both heads share the CNN+BiLSTM+Dense backbone.
 
-V17 goal: keep V11 adversarial-flow learning while adding hard SAFE no-sink/comment-only/string-only examples, so SQL-looking text is not treated as SQLi without a real execution sink. It targets new-code failures without copying benchmark source files.
+V18-ML95 goal: keep V11 adversarial-flow learning while adding hard SAFE no-sink/comment-only/string-only examples, so SQL-looking text is not treated as SQLi without a real execution sink. It targets new-code failures without copying benchmark source files.
 
 Loss: hardcase-weighted BCE(vuln_head) + λ·hardcase-weighted CCE(type_head), λ = 0.90
 The vuln head is the proposal-defined primary classifier; the type head
@@ -46,7 +47,7 @@ is auxiliary (proposal page 8: "classify into vulnerable AND attack type").
 HOW TO USE THIS FILE IN GOOGLE COLAB:
 1. Upload this file to your Colab session
 2. Upload vocabulary.json   (from backend/colab_export/)
-3. Upload training_data.npz (from backend/colab_export/) — must contain X, y, y_type and V17 sample_weight_binary/sample_weight_type
+3. Upload training_data.npz (from backend/colab_export/) — must contain X, y, y_type and V18-ML95 sample_weight_binary/sample_weight_type
 4. Run all cells. Live training plots are displayed and saved to training_plots/.
    OR copy-paste each section into cells
 
@@ -189,8 +190,8 @@ print("\nSaved dataset_profile.json")
 # SECTION 2 — Architecture constants and training hyperparameters
 # CRITICAL: architecture values must match backend inference.
 # ─────────────────────────────────────────────────────────────────────────────
-MODEL_VERSION = "model1-cnn-bilstm-dual-head-v18-ml95-v2-normalizer"
-NORMALIZER_VERSION = "semantic-normalizer-v18-ml95-v2-safe-dynamic-sql"  # update if backend normalizer semantics change
+MODEL_VERSION = "model1-cnn-bilstm-dual-head-v20-attack-surface-ml95"
+NORMALIZER_VERSION = "semantic-normalizer-v20-attack-surface-flow"  # update if backend normalizer semantics change
 DATASET_VERSION = DATASET_PROFILE.get("vocabulary_sha256", "unknown")[:12]
 
 EMBED_DIM        = 64
@@ -199,10 +200,10 @@ KERNEL_SIZE      = 3
 LSTM_HIDDEN      = 32    # per direction; BiLSTM output = 2 × 32 = 64
 DENSE_HIDDEN     = 64
 DENSE_IN         = CONV_FILTERS + 2 * LSTM_HIDDEN   # = 128
-MODEL_SEQ_LEN    = int(X.shape[1])                  # ML-primary v17 should be 256; saved in metadata
+MODEL_SEQ_LEN    = int(X.shape[1])                  # ML-primary V18-ML95 should be 256; saved in metadata
 
 NUM_TYPE_CLASSES = 4     # NONE, IN_BAND, BLIND, SECOND_ORDER
-LAMBDA_TYPE      = 1.30   # V17: strong but less overconfident type head; evidence should help separate direct IN_BAND from SECOND_ORDER
+LAMBDA_TYPE      = 1.30   # V18-ML95: binary head is primary, type head remains auxiliary; evidence should help separate direct IN_BAND from SECOND_ORDER
 
 EPOCHS   = 155
 LR_INIT  = 0.0042
@@ -239,7 +240,7 @@ PLOT_EVERY = 1
 PLOT_OUT_DIR = "training_plots"
 BEST_SCORE_TYPE_WEIGHT = 0.34
 BEST_SCORE_SAFE_WEIGHT = 0.31
-BEST_SCORE_BALANCED_WEIGHT = 0.35  # V17 checkpoint favors balanced SAFE/VULN behavior and attack-type accuracy, while reducing SECOND_ORDER overclassification
+BEST_SCORE_BALANCED_WEIGHT = 0.35  # V18-ML95 checkpoint favors balanced SAFE/VULN behavior and attack-type accuracy, while reducing SECOND_ORDER overclassification
 
 
 # ## Section 2b — Stratified train/validation/test split and class weights
@@ -302,10 +303,10 @@ def inverse_freq_weights(labels, n_classes):
 BIN_CLASS_WEIGHTS, bin_counts = inverse_freq_weights(y_train.astype(int), 2)
 TYPE_CLASS_WEIGHTS, type_counts_train = inverse_freq_weights(yt_train.astype(int), NUM_TYPE_CLASSES)
 
-# V17: V7 became too aggressive and marked many SAFE files as VULNERABLE.
+# V18-ML95: avoid becoming too aggressive and marked many SAFE files as VULNERABLE.
 # We therefore boost SAFE/NONE learning while keeping vulnerable classes strong enough
 # for high recall. This is training-time calibration, not runtime rule memorization.
-TYPE_HARDCASE_BOOST = np.array([1.25, 1.55, 1.76, 0.95], dtype=np.float32)  # V17: boost IN_BAND/BLIND, reduce SECOND_ORDER over-prediction
+TYPE_HARDCASE_BOOST = np.array([1.25, 1.55, 1.76, 0.95], dtype=np.float32)  # V18-ML95: boost IN_BAND/BLIND, reduce SECOND_ORDER over-prediction
 TYPE_CLASS_WEIGHTS = (TYPE_CLASS_WEIGHTS * TYPE_HARDCASE_BOOST).astype(np.float32)
 BIN_HARDCASE_BOOST = np.array([1.16, 1.22], dtype=np.float32)  # balance SAFE specificity with vulnerable recall
 BIN_CLASS_WEIGHTS = (BIN_CLASS_WEIGHTS * BIN_HARDCASE_BOOST).astype(np.float32)
@@ -834,7 +835,7 @@ def render_live_training_plots(history, epoch, show=True):
 
     axes[1, 2].plot(epochs, _series(history, "ml_primary_score"), label="checkpoint score")
     axes[1, 2].plot(epochs, _series(history, "val_none_f1"), label="NONE F1")
-    axes[1, 2].set_title("V17 balanced checkpoint score")
+    axes[1, 2].set_title("V18-ML95 balanced checkpoint score")
     axes[1, 2].set_xlabel("epoch")
     axes[1, 2].legend()
 
@@ -933,7 +934,7 @@ for epoch in range(1, EPOCHS + 1):
         f"score={history[-1]['ml_primary_score']:.3f}  lr={lr:.5f}  ({elapsed:.1f}s)"
     )
 
-    # V17 checkpoint: binary F1 remains primary, but we explicitly reward
+    # V18-ML95 checkpoint: binary F1 remains primary, but we explicitly reward
     # SAFE specificity / NONE F1 so the best checkpoint cannot be an
     # all-vulnerable model. Attack-type macro-F1 still matters for IN_BAND,
     # BLIND and SECOND_ORDER classification.
@@ -1314,5 +1315,43 @@ print("  backend/app/model/weights/sqli_detection_model.npz")
 print("  backend/app/model/weights/sqli_detection_metadata.json")
 print("  backend/app/model/weights/sqli_detection_vocab.json")
 print("Current backend compatibility: also copy sqli_model.npz to backend/app/model/weights/sqli_model.npz")
+
+
+# OPTIONAL — zip and download trained artifacts after training finishes.
+# Run this cell only after the training/export cells above complete successfully.
+
+from pathlib import Path
+import zipfile
+
+artifact_names = [
+    "sqli_model.npz",
+    "sqli_detection_model.npz",
+    "sqli_detection_vocab.json",
+    "sqli_detection_metadata.json",
+    "sqli_detection_metrics.json",
+    "sqli_detection_label_maps.json",
+    "training_history.json",
+    "dataset_profile.json",
+    "split_info.json",
+]
+
+zip_path = Path("v18_ml95_trained_artifacts.zip")
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+    for name in artifact_names:
+        p = Path(name)
+        if p.exists():
+            zf.write(p, arcname=p.name)
+    plots_dir = Path("training_plots")
+    if plots_dir.exists():
+        for p in plots_dir.rglob("*"):
+            if p.is_file():
+                zf.write(p, arcname=str(p))
+
+print(f"Created {zip_path}")
+try:
+    from google.colab import files
+    files.download(str(zip_path))
+except Exception as exc:
+    print("Download helper is available only inside Google Colab:", exc)
 
 

