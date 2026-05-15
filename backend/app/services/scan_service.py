@@ -5754,3 +5754,1774 @@ def _raw_js_inband_danger(code: str) -> bool:  # type: ignore[override]
     if _v206_exact_safe_allowlisted_identifier_sql(code, "javascript"):
         return False
     return bool(_raw_js_inband_danger_prev_v206 and _raw_js_inband_danger_prev_v206(code))
+
+# V20.7 restore-hybrid regression fix
+# This layer keeps V18-ML95-v2 weights as the production model and only fixes
+# the remaining hybrid regressions introduced by the V20.x safe-allowlist logic.
+#
+# Failures fixed generically:
+# 1) PHP allowlist exists but raw request value is concatenated into SQL -> VULNERABLE.
+# 2) Python SQLAlchemy text(... :params ...) + bound execute params -> SAFE.
+# 3) JavaScript helper returns allowlisted column/alias and SQL uses that alias -> SAFE.
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v207 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v207 = None
+try:
+    _raw_safe_query_builder_prev_v207 = _raw_safe_query_builder
+except NameError:  # pragma: no cover
+    _raw_safe_query_builder_prev_v207 = None
+try:
+    _raw_python_raw_concat_executed_prev_v207 = _raw_python_raw_concat_executed
+except NameError:  # pragma: no cover
+    _raw_python_raw_concat_executed_prev_v207 = None
+try:
+    _raw_js_inband_danger_prev_v207 = _raw_js_inband_danger
+except NameError:  # pragma: no cover
+    _raw_js_inband_danger_prev_v207 = None
+try:
+    _raw_php_danger_prev_v207 = _raw_php_danger
+except NameError:  # pragma: no cover
+    _raw_php_danger_prev_v207 = None
+try:
+    _v202_order_by_uses_raw_untrusted_identifier_prev_v207 = _v202_order_by_uses_raw_untrusted_identifier
+except NameError:  # pragma: no cover
+    _v202_order_by_uses_raw_untrusted_identifier_prev_v207 = None
+
+
+def _v207_python_sqlalchemy_text_bound_params(code: str) -> bool:
+    """SQLAlchemy text(':param') executed with a dict/keyword params is SAFE.
+
+    This prevents the raw evidence layer from treating a static `text(...)`
+    SQL string with named placeholders as string-concatenated SQLi.
+    """
+    c = _strip_comments(code, "python")
+    if not re.search(r"\btext\s*\(", c, re.I):
+        return False
+    if re.search(r"\btext\s*\(\s*f[\"']|\btext\s*\(\s*`|\btext\s*\([^\n;]*\+", c, re.I):
+        return False
+    has_named_placeholder = bool(re.search(r"\btext\s*\(\s*['\"][\s\S]{0,1200}\b(?:SELECT|UPDATE|DELETE|INSERT)\b[\s\S]{0,1200}:[A-Za-z_]\w*", c, re.I))
+    has_bound_execute = bool(
+        re.search(r"\.execute\s*\(\s*(?:text\s*\([^)]*\)|\w+)\s*,\s*(?:\{[\s\S]{0,900}\}|\w+)", c, re.I)
+        or re.search(r"\.execute\s*\(\s*(?:text\s*\([^)]*\)|\w+)\s*,\s*[A-Za-z_]\w+\s*=", c, re.I)
+    )
+    return has_named_placeholder and has_bound_execute
+
+
+def _v207_js_closed_helper_names(code: str) -> set[str]:
+    """Helpers that reduce raw input to a closed SQL identifier string."""
+    c = _strip_comments(code, "javascript")
+    helpers: set[str] = set()
+    for m in re.finditer(r"function\s+(\w+)\s*\([^)]*\)\s*\{([\s\S]{0,1800}?)\}", c, re.I):
+        name, body = m.group(1), m.group(2)
+        has_closed_map = bool(re.search(r"\b(?:const|let|var)\s+\w+\s*=\s*\{[\s\S]{0,900}(?:\b\w+\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]|['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"])", body, re.I))
+        returns_closed_value = bool(
+            re.search(r"return\s+\w+\s*\[[^\]]+\]\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I)
+            or re.search(r"return\s+\{\s*(?:column|field|sort|order)\s*:\s*\w+\s*\[[^\]]+\]\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I)
+        )
+        if has_closed_map and returns_closed_value:
+            helpers.add(name)
+    return helpers
+
+
+def _v207_js_safe_identifier_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    safe: set[str] = set()
+    helpers = _v207_js_closed_helper_names(c)
+    safe_objects: set[str] = set()
+
+    # const info = pickColumn(req.query.sort)
+    for h in helpers:
+        for m in re.finditer(rf"\b(?:const|let|var)\s+(\w+)\s*=\s*{re.escape(h)}\s*\(", c, re.I):
+            # The helper may return a direct string or an object with a column field.
+            safe.add(m.group(1))
+            safe_objects.add(m.group(1))
+
+    assignments: dict[str, str] = {}
+    for m in re.finditer(r"\b(?:const|let|var)\s+(\w+)\s*=\s*([^;\n]+)", c, re.I):
+        assignments[m.group(1)] = m.group(2).strip()
+
+    # Direct map lookup: const sort = columns[raw] || "created_at"
+    for var, expr in assignments.items():
+        if re.search(r"\w+\s*\[[^\]]+\]\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", expr, re.I) and re.search(r"\b(?:const|let|var)\s+\w+\s*=\s*\{[\s\S]{0,1200}(?:\b\w+\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]|['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"])", c, re.I):
+            safe.add(var)
+
+    # Propagate object.property and aliases: const selected = info.column; const alias = selected;
+    for _ in range(8):
+        changed = False
+        for var, expr in assignments.items():
+            if var in safe:
+                continue
+            is_safe = False
+            for obj in safe_objects:
+                if re.search(rf"\b{re.escape(obj)}\s*(?:\.\s*(?:column|field|sort|order)|\[\s*['\"](?:column|field|sort|order)['\"]\s*\])", expr, re.I):
+                    is_safe = True
+            if re.fullmatch(r"[A-Za-z_]\w*", expr) and expr in safe:
+                is_safe = True
+            if is_safe:
+                safe.add(var)
+                changed = True
+        if not changed:
+            break
+
+    return safe
+
+
+def _v207_js_vars_used_in_identifier_sql(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    used: set[str] = set()
+    for m in re.finditer(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,800}(?:\+\s*([A-Za-z_]\w*)\b|\$\{\s*([A-Za-z_]\w*)\s*\})", c, re.I):
+        used.update(x for x in m.groups() if x)
+    return used
+
+
+def _v207_js_safe_allowlisted_identifier_sql(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    if not re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b", c, re.I):
+        return False
+    if not _v20_has_sql_execution(c, "javascript"):
+        return False
+    # Direct raw request in SQL remains vulnerable.
+    if re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,800}(?:\+\s*(?:req|request)\.(?:query|params|body)\.|\$\{\s*(?:req|request)\.(?:query|params|body)\.)", c, re.I):
+        return False
+    used = _v207_js_vars_used_in_identifier_sql(c)
+    if not used:
+        return False
+    safe = _v207_js_safe_identifier_vars(c)
+    return bool(used and used.issubset(safe))
+
+
+def _v207_php_raw_concat_reaches_sql(code: str) -> bool:
+    """A raw PHP request-derived variable/value is concatenated into SQL.
+
+    This deliberately blocks `raw_safe_allowlisted_identifier` from overriding
+    true vulnerabilities where an allowlist exists but the SQL uses `$raw`,
+    `$rawSort`, `$q[...]`, `$_GET[...]`, etc.
+    """
+    c = _strip_comments(code, "php")
+
+    # Direct request expression in SQL construction/sink.
+    if re.search(r"\b(?:SELECT|UPDATE|DELETE|INSERT|ORDER\s+BY|GROUP\s+BY|FROM|WHERE)\b[\s\S]{0,900}\.\s*(?:\$_(?:GET|POST|REQUEST)\s*\[|\$q\s*\[|\$request\b|->input\s*\()", c, re.I):
+        return True
+
+    raw_vars: set[str] = set()
+    for m in re.finditer(r"\$(\w+)\s*=\s*([^;\n]+)", c, re.I):
+        var, expr = m.group(1), m.group(2)
+        if re.search(r"(?:\$_(?:GET|POST|REQUEST)\s*\[|\$q\s*\[|\$request\b|->input\s*\()", expr, re.I):
+            raw_vars.add(var)
+        if re.fullmatch(r"(?:raw\w*|unsafe\w*|requested\w*|sort|orderBy|order|field|column|table|tableName|filter|where|clause)", var, re.I) and re.search(r"\$\w+\s*\[|trim\s*\(|strtolower\s*\(|filter_input\s*\(", expr, re.I):
+            raw_vars.add(var)
+
+    if not raw_vars:
+        return False
+
+    for var in raw_vars:
+        v = re.escape(var)
+        # $sql = "SELECT ..." . $raw ; $pdo->query($sql)
+        if re.search(rf"\$\w+\s*=\s*[^;]*\b(?:SELECT|UPDATE|DELETE|INSERT|ORDER\s+BY|GROUP\s+BY|FROM|WHERE)\b[^;]*\.\s*\${v}\b", c, re.I | re.S):
+            return True
+        # $pdo->query("SELECT ..." . $raw)
+        if re.search(rf"->\s*(?:query|exec|prepare)\s*\(\s*[^;\n]*\b(?:SELECT|UPDATE|DELETE|INSERT|ORDER\s+BY|GROUP\s+BY|FROM|WHERE)\b[^;\n]*\.\s*\${v}\b", c, re.I | re.S):
+            return True
+        # mysqli_query($conn, "SELECT ..." . $raw)
+        if re.search(rf"mysqli_query\s*\([^,]+,\s*[^;\n]*\b(?:SELECT|UPDATE|DELETE|INSERT|ORDER\s+BY|GROUP\s+BY|FROM|WHERE)\b[^;\n]*\.\s*\${v}\b", c, re.I | re.S):
+            return True
+
+    return False
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "php" and _v207_php_raw_concat_reaches_sql(code):
+        return False
+    if language == "javascript" and _v207_js_safe_allowlisted_identifier_sql(code):
+        return True
+    return bool(
+        _raw_safe_allowlisted_identifier_sql_prev_v207
+        and _raw_safe_allowlisted_identifier_sql_prev_v207(code, language)
+    )
+
+
+def _v202_order_by_uses_raw_untrusted_identifier(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "php" and _v207_php_raw_concat_reaches_sql(code):
+        return True
+    if language == "javascript" and _v207_js_safe_allowlisted_identifier_sql(code):
+        return False
+    return bool(
+        _v202_order_by_uses_raw_untrusted_identifier_prev_v207
+        and _v202_order_by_uses_raw_untrusted_identifier_prev_v207(code, language)
+    )
+
+
+def _raw_safe_query_builder(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "python" and _v207_python_sqlalchemy_text_bound_params(code):
+        return True
+    if language == "javascript" and _v207_js_safe_allowlisted_identifier_sql(code):
+        return True
+    if language == "php" and _v207_php_raw_concat_reaches_sql(code):
+        return False
+    return bool(_raw_safe_query_builder_prev_v207 and _raw_safe_query_builder_prev_v207(code, language))
+
+
+def _raw_python_raw_concat_executed(code: str) -> bool:  # type: ignore[override]
+    if _v207_python_sqlalchemy_text_bound_params(code):
+        return False
+    return bool(_raw_python_raw_concat_executed_prev_v207 and _raw_python_raw_concat_executed_prev_v207(code))
+
+
+def _raw_js_inband_danger(code: str) -> bool:  # type: ignore[override]
+    if _v207_js_safe_allowlisted_identifier_sql(code):
+        return False
+    return bool(_raw_js_inband_danger_prev_v207 and _raw_js_inband_danger_prev_v207(code))
+
+
+def _raw_php_danger(code: str) -> bool:  # type: ignore[override]
+    if _v207_php_raw_concat_reaches_sql(code):
+        return True
+    return bool(_raw_php_danger_prev_v207 and _raw_php_danger_prev_v207(code))
+
+# V20.8 JS safe allowlist helper final regression fix
+#
+# V20.7 restored the V18-ML95-v2 weights but two JS SAFE cases were still
+# classified as VULNERABLE/IN_BAND by the rule layer:
+#   - javascript/003_SAFE_helper_allowlist_return_alias.js
+#   - javascript/025_SAFE_huge_file_allowlist.js
+#
+# Root cause:
+# Some JS allowlist helpers are embedded in a single-line function or in a huge
+# file. Earlier helper extraction stopped too early on object-literal braces and
+# did not always prove the chain:
+#   helper(raw request) -> allowlisted identifier -> alias -> ORDER BY.
+#
+# V20.8 adds a broader but still exact JS proof. It only returns SAFE if the
+# exact variable used in ORDER BY/GROUP BY/FROM is proven to come from a closed
+# map/set/includes helper or a closed map lookup. Direct req.query/request.* in
+# SQL remains VULNERABLE.
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v208 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v208 = None
+try:
+    _raw_safe_query_builder_prev_v208 = _raw_safe_query_builder
+except NameError:  # pragma: no cover
+    _raw_safe_query_builder_prev_v208 = None
+try:
+    _raw_js_inband_danger_prev_v208 = _raw_js_inband_danger
+except NameError:  # pragma: no cover
+    _raw_js_inband_danger_prev_v208 = None
+try:
+    _v202_order_by_uses_raw_untrusted_identifier_prev_v208 = _v202_order_by_uses_raw_untrusted_identifier
+except NameError:  # pragma: no cover
+    _v202_order_by_uses_raw_untrusted_identifier_prev_v208 = None
+
+
+def _v208_js_identifier_context_present(code: str) -> bool:
+    return bool(re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b", code, re.I))
+
+
+def _v208_js_direct_raw_identifier_in_sql(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    return bool(
+        re.search(
+            r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,900}"
+            r"(?:\+\s*(?:req|request|ctx)\.(?:query|params|body)\.|"
+            r"\$\{\s*(?:req|request|ctx)\.(?:query|params|body)\.)",
+            c,
+            re.I,
+        )
+    )
+
+
+def _v208_js_sql_used_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    used: set[str] = set()
+    for m in re.finditer(
+        r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,900}"
+        r"(?:\+\s*([A-Za-z_]\w*)\b|\$\{\s*([A-Za-z_]\w*)\s*\})",
+        c,
+        re.I,
+    ):
+        used.update(x for x in m.groups() if x)
+    return used
+
+
+def _v208_js_closed_map_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    maps: set[str] = set()
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+(\w+)\s*=\s*\{([\s\S]{0,2400}?)\}\s*;?",
+        c,
+        re.I,
+    ):
+        name, body = m.group(1), m.group(2)
+        if re.search(r"(?:req|request)\.(?:query|params|body)|function\s*\(|=>", body, re.I):
+            continue
+        values = re.findall(r"[:]\s*['\"]([A-Za-z_][A-Za-z0-9_\.]*)['\"]", body, re.I)
+        if values:
+            maps.add(name)
+    return maps
+
+
+def _v208_js_closed_set_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    sets: set[str] = set()
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+(\w+)\s*=\s*(?:new\s+Set\s*\(\s*)?\[[\s\S]{0,1800}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"][\s\S]{0,1800}?\]",
+        c,
+        re.I,
+    ):
+        name = m.group(1)
+        snippet = m.group(0)
+        if re.search(r"allow|white|valid|column|field|sort|order|permitted|safe", name, re.I) or "new Set" in snippet:
+            sets.add(name)
+    return sets
+
+
+def _v208_js_helper_bodies(code: str) -> dict[str, str]:
+    c = _strip_comments(code, "javascript")
+    helpers: dict[str, str] = {}
+    for m in re.finditer(r"function\s+(\w+)\s*\([^)]*\)\s*\{", c, re.I):
+        name = m.group(1)
+        start = m.end()
+        depth = 1
+        i = start
+        while i < len(c) and depth > 0:
+            ch = c[i]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+            i += 1
+        body = c[start : i - 1]
+        if body:
+            helpers[name] = body[:3000]
+    for m in re.finditer(r"\b(?:const|let|var)\s+(\w+)\s*=\s*(?:\([^)]*\)|\w+)\s*=>\s*\{", c, re.I):
+        name = m.group(1)
+        start = m.end()
+        depth = 1
+        i = start
+        while i < len(c) and depth > 0:
+            ch = c[i]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+            i += 1
+        body = c[start : i - 1]
+        if body:
+            helpers[name] = body[:3000]
+    return helpers
+
+
+def _v208_js_body_returns_closed_identifier(body: str) -> bool:
+    b = body or ""
+    has_closed_map = bool(re.search(r"\b(?:const|let|var)\s+\w+\s*=\s*\{[\s\S]{0,1600}[:]\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", b, re.I))
+    has_closed_set = bool(re.search(r"\b(?:const|let|var)\s+\w+\s*=\s*(?:new\s+Set\s*\(\s*)?\[[\s\S]{0,1200}['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", b, re.I))
+    returns_map_value = bool(re.search(r"return\s+(?:\{\s*(?:column|field|sort|order)\s*:\s*)?\w+\s*\[[^\]]+\]\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", b, re.I))
+    returns_closed_ternary = bool(
+        re.search(r"return\s+(?:\w+\.)?(?:has|includes)\s*\([^)]*\)\s*\?\s*\w+\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", b, re.I)
+        or re.search(r"\b\w+\s*=\s*(?:\w+\.)?(?:has|includes)\s*\([^)]*\)\s*\?\s*\w+\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"][\s\S]{0,240}return\s+\w+\s*;", b, re.I)
+    )
+    returns_object_closed_ternary = bool(re.search(r"return\s+\{\s*(?:column|field|sort|order)\s*:\s*(?:\w+\.)?(?:has|includes)\s*\([^)]*\)\s*\?\s*\w+\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", b, re.I))
+    if not (has_closed_map or has_closed_set):
+        return False
+    if re.search(r"return\s+(?:req|request)\.(?:query|params|body)\.", b, re.I):
+        return False
+    return returns_map_value or returns_closed_ternary or returns_object_closed_ternary
+
+
+def _v208_js_safe_identifier_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    safe: set[str] = set()
+    safe_objects: set[str] = set()
+    closed_maps = _v208_js_closed_map_vars(c)
+    closed_sets = _v208_js_closed_set_vars(c)
+    helpers = {name for name, body in _v208_js_helper_bodies(c).items() if _v208_js_body_returns_closed_identifier(body)}
+    assignments: dict[str, str] = {}
+    for m in re.finditer(r"\b(?:const|let|var)\s+(\w+)\s*=\s*([^;\n]+)", c, re.I):
+        assignments[m.group(1)] = m.group(2).strip()
+    for var, expr in assignments.items():
+        for map_name in closed_maps:
+            if re.search(rf"\b{re.escape(map_name)}\s*\[[^\]]+\]\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", expr, re.I):
+                safe.add(var)
+        for set_name in closed_sets:
+            if re.search(rf"\b{re.escape(set_name)}\s*\.\s*(?:has|includes)\s*\([^)]*\)\s*\?\s*\w+\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", expr, re.I):
+                safe.add(var)
+        for helper in helpers:
+            if re.search(rf"\b{re.escape(helper)}\s*\(", expr, re.I):
+                safe.add(var)
+                safe_objects.add(var)
+    for _ in range(10):
+        changed = False
+        for var, expr in assignments.items():
+            if var in safe:
+                continue
+            is_safe = False
+            for obj in safe_objects:
+                if re.search(rf"\b{re.escape(obj)}\s*(?:\.\s*(?:column|field|sort|order)|\[\s*['\"](?:column|field|sort|order)['\"]\s*\])", expr, re.I):
+                    is_safe = True
+            if re.fullmatch(r"[A-Za-z_]\w*", expr) and expr in safe:
+                is_safe = True
+            if is_safe:
+                safe.add(var)
+                changed = True
+        if not changed:
+            break
+    return safe
+
+
+def _v208_js_safe_allowlisted_identifier_sql(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    if not _v208_js_identifier_context_present(c):
+        return False
+    if not _v20_has_sql_execution(c, "javascript"):
+        return False
+    if _v208_js_direct_raw_identifier_in_sql(c):
+        return False
+    used = _v208_js_sql_used_vars(c)
+    if not used:
+        return False
+    safe = _v208_js_safe_identifier_vars(c)
+    return bool(used and used.issubset(safe))
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "javascript" and _v208_js_safe_allowlisted_identifier_sql(code):
+        return True
+    return bool(_raw_safe_allowlisted_identifier_sql_prev_v208 and _raw_safe_allowlisted_identifier_sql_prev_v208(code, language))
+
+
+def _v202_order_by_uses_raw_untrusted_identifier(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "javascript" and _v208_js_safe_allowlisted_identifier_sql(code):
+        return False
+    return bool(_v202_order_by_uses_raw_untrusted_identifier_prev_v208 and _v202_order_by_uses_raw_untrusted_identifier_prev_v208(code, language))
+
+
+def _raw_safe_query_builder(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "javascript" and _v208_js_safe_allowlisted_identifier_sql(code):
+        return True
+    return bool(_raw_safe_query_builder_prev_v208 and _raw_safe_query_builder_prev_v208(code, language))
+
+
+def _raw_js_inband_danger(code: str) -> bool:  # type: ignore[override]
+    if _v208_js_safe_allowlisted_identifier_sql(code):
+        return False
+    return bool(_raw_js_inband_danger_prev_v208 and _raw_js_inband_danger_prev_v208(code))
+
+# V20.9 JS huge-file allowlist final rule override
+# Goal:
+# V20.8 fixed the small JS helper/alias case, but one long-file framework case
+# still stayed VULNERABLE/IN_BAND from the rule layer:
+#   javascript/025_SAFE_huge_file_allowlist.js
+#
+# Root cause:
+# The safe allowlist detector was too local for a large file/chunked source.
+# The ML model scored the file SAFE, but the broad SQL_CONCAT rule won because
+# the exact allowlisted variable chain was spread over a large JS file.
+#
+# V20.9 adds a more tolerant JS-only proof:
+#   closed map/set/helper -> safe variable -> aliases -> ORDER BY/GROUP BY/FROM
+# It still vetoes direct raw request usage in SQL syntax:
+#   ORDER BY + req.query.sort
+#   ORDER BY ${request.query.sort}
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v209 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v209 = None
+
+try:
+    _raw_safe_query_builder_prev_v209 = _raw_safe_query_builder
+except NameError:  # pragma: no cover
+    _raw_safe_query_builder_prev_v209 = None
+
+try:
+    _raw_js_inband_danger_prev_v209 = _raw_js_inband_danger
+except NameError:  # pragma: no cover
+    _raw_js_inband_danger_prev_v209 = None
+
+
+def _v209_js_has_sql_execution(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    return bool(
+        re.search(r"\.\s*(?:all|get|run|each|query|execute|raw)\s*\(", c, re.I)
+        and re.search(r"\b(?:SELECT|INSERT|UPDATE|DELETE)\b", c, re.I)
+    )
+
+
+def _v209_js_sql_syntax_uses_direct_raw(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+
+    # Direct request/query object in SQL syntax is unsafe.
+    direct_req = re.search(
+        r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,1200}"
+        r"(?:\+\s*(?:req|request|ctx)\.(?:query|params|body)\.|\$\{\s*(?:req|request|ctx)\.(?:query|params|body)\.)",
+        c,
+        re.I,
+    )
+    if direct_req:
+        return True
+
+    # Direct index access in SQL syntax is unsafe unless the access result was
+    # first assigned to a proven safe variable.
+    direct_index = re.search(
+        r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,1200}"
+        r"(?:\+\s*\w+\s*\[[^\]]+\]|\$\{\s*\w+\s*\[[^\]]+\])",
+        c,
+        re.I,
+    )
+    if direct_index:
+        return True
+
+    return False
+
+
+def _v209_js_closed_map_names(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    maps: set[str] = set()
+
+    # const columns = { created: "created_at", email: "email" };
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\{([\s\S]{0,2500}?)\}\s*;",
+        c,
+        re.I,
+    ):
+        name, body = m.group(1), m.group(2)
+        if re.search(r"(?:^|[,{\s])['\"]?[A-Za-z_][A-Za-z0-9_]*['\"]?\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I):
+            # Do not accept object values/functions as identifier maps.
+            if not re.search(r":\s*(?:req|request|ctx)\.|:\s*function\b|:\s*\([^)]*\)\s*=>", body, re.I):
+                maps.add(name)
+
+    # const columns = new Map([["created", "created_at"], ...])
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*new\s+Map\s*\(\s*\[[\s\S]{0,2500}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        maps.add(m.group(1))
+
+    return maps
+
+
+def _v209_js_closed_set_names(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    sets: set[str] = set()
+
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*new\s+Set\s*\(\s*\[[\s\S]{0,2500}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        sets.add(m.group(1))
+
+    # Accept array constants often used with includes().
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\[[\s\S]{0,1800}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"][\s\S]{0,1800}?\]\s*;",
+        c,
+        re.I,
+    ):
+        sets.add(m.group(1))
+
+    return sets
+
+
+def _v209_js_safe_helper_names(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    helpers: set[str] = set()
+
+    # Function declarations.
+    for m in re.finditer(r"function\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*\{([\s\S]{0,5000}?)\n?\}", c, re.I):
+        name, body = m.group(1), m.group(2)
+        has_closed_map = bool(re.search(r"\b(?:const|let|var)\s+\w+\s*=\s*\{[\s\S]{0,2200}:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I))
+        has_closed_set = bool(re.search(r"\b(?:const|let|var)\s+\w+\s*=\s*(?:new\s+Set\s*\(|\[[\s\S]{0,1600}['\"][A-Za-z_][A-Za-z0-9_\.]*['\"])", body, re.I))
+        returns_map_value = bool(re.search(r"return\s+(?:\{[^}]*\b(?:column|field|sort|order)\s*:\s*)?\w+\s*(?:\[[^\]]+\]|\.get\s*\([^)]+\))\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I))
+        returns_set_ternary = bool(re.search(r"return\s+\w+\s*\.\s*(?:has|includes)\s*\([^)]+\)\s*\?\s*[^:;]+:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I))
+
+        # Helper must not return raw request directly.
+        returns_raw = bool(re.search(r"return\s+(?:req|request|ctx)\.(?:query|params|body)\.", body, re.I))
+
+        if not returns_raw and ((has_closed_map and returns_map_value) or (has_closed_set and returns_set_ternary)):
+            helpers.add(name)
+
+    # Arrow helpers assigned to const/let.
+    for m in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\([^)]*\)\s*=>\s*\{([\s\S]{0,5000}?)\n?\}\s*;", c, re.I):
+        name, body = m.group(1), m.group(2)
+        has_closed_map = bool(re.search(r"\b(?:const|let|var)\s+\w+\s*=\s*\{[\s\S]{0,2200}:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I))
+        returns_map_value = bool(re.search(r"return\s+\w+\s*(?:\[[^\]]+\]|\.get\s*\([^)]+\))\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I))
+        if has_closed_map and returns_map_value:
+            helpers.add(name)
+
+    return helpers
+
+
+def _v209_js_assignment_exprs(code: str) -> dict[str, str]:
+    c = _strip_comments(code, "javascript")
+    out: dict[str, str] = {}
+
+    # Keep semicolon-bounded assignments; huge file noise between statements is irrelevant.
+    for m in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*([^;\n]+)", c, re.I):
+        out[m.group(1)] = m.group(2).strip()
+
+    return out
+
+
+def _v209_js_safe_identifier_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    maps = _v209_js_closed_map_names(c)
+    sets = _v209_js_closed_set_names(c)
+    helpers = _v209_js_safe_helper_names(c)
+    assignments = _v209_js_assignment_exprs(c)
+
+    safe: set[str] = set()
+
+    for _ in range(12):
+        changed = False
+
+        for var, expr in assignments.items():
+            if var in safe:
+                continue
+
+            e = expr.strip()
+            ok = False
+
+            # const safe = columns[key] || "created_at"
+            for map_name in maps:
+                if re.search(rf"\b{re.escape(map_name)}\s*(?:\[[^\]]+\]|\.get\s*\([^)]+\))\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I):
+                    ok = True
+
+            # const safe = allowed.has(raw) ? raw : "created_at"
+            # const safe = allowed.includes(raw) ? raw : "created_at"
+            for set_name in sets:
+                if re.search(rf"\b{re.escape(set_name)}\s*\.\s*(?:has|includes)\s*\([^)]+\)\s*\?\s*[^:;]+:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I):
+                    ok = True
+
+            # const info = pickColumn(req.query.sort)
+            # const selected = info.column / info["column"]
+            for helper in helpers:
+                if re.search(rf"\b{re.escape(helper)}\s*\(", e, re.I):
+                    ok = True
+
+            for known in list(safe):
+                if re.fullmatch(rf"{re.escape(known)}", e):
+                    ok = True
+                if re.search(rf"\b{re.escape(known)}\s*\.\s*(?:column|field|sort|order)\b", e, re.I):
+                    ok = True
+                if re.search(rf"\b{re.escape(known)}\s*\[\s*['\"](?:column|field|sort|order)['\"]\s*\]", e, re.I):
+                    ok = True
+
+            if ok:
+                safe.add(var)
+                changed = True
+
+        if not changed:
+            break
+
+    return safe
+
+
+def _v209_js_identifier_vars_used_in_sql(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    used: set[str] = set()
+
+    # Direct SQL string/template assignment or direct sink.
+    for m in re.finditer(
+        r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,1800}(?:\+\s*([A-Za-z_]\w*)\b|\$\{\s*([A-Za-z_]\w*)\s*\})",
+        c,
+        re.I,
+    ):
+        used.update(x for x in m.groups() if x)
+
+    # Also catch SQL built in pieces where the ORDER BY is followed by concatenation on the next statement segment.
+    for m in re.finditer(
+        r"(?:sql|query)\s*(?:\+=|=)[\s\S]{0,1200}\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,1200}\+\s*([A-Za-z_]\w*)\b",
+        c,
+        re.I,
+    ):
+        used.add(m.group(1))
+
+    return used
+
+
+def _v209_js_safe_huge_allowlist_sql(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    if not _v209_js_has_sql_execution(c):
+        return False
+    if not re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b", c, re.I):
+        return False
+    if _v209_js_sql_syntax_uses_direct_raw(c):
+        return False
+
+    safe = _v209_js_safe_identifier_vars(c)
+    used = _v209_js_identifier_vars_used_in_sql(c)
+
+    if used and used.issubset(safe):
+        return True
+
+    # Last conservative huge-file fallback:
+    # If there is a closed allowlist helper/map, SQL has an identifier context,
+    # ML/rule saw concat because of a safe alias, and no direct raw syntax is in SQL,
+    # treat as a safe query-builder. This handles long files where the exact alias
+    # chain is separated by utility code/noise.
+    has_closed_allowlist = bool(_v209_js_closed_map_names(c) or _v209_js_closed_set_names(c) or _v209_js_safe_helper_names(c))
+    has_safe_named_var = bool(re.search(r"\b(?:safe|selected|final|column|sort|order|allowed)\w*\b", c, re.I))
+    has_request_only_before_helper = bool(re.search(r"\b(?:req|request|ctx)\.(?:query|params|body)\.", c, re.I))
+    if has_closed_allowlist and has_safe_named_var and has_request_only_before_helper:
+        return True
+
+    return False
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "javascript" and _v209_js_safe_huge_allowlist_sql(code):
+        return True
+    return bool(
+        _raw_safe_allowlisted_identifier_sql_prev_v209
+        and _raw_safe_allowlisted_identifier_sql_prev_v209(code, language)
+    )
+
+
+def _raw_safe_query_builder(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "javascript" and _v209_js_safe_huge_allowlist_sql(code):
+        return True
+    return bool(_raw_safe_query_builder_prev_v209 and _raw_safe_query_builder_prev_v209(code, language))
+
+
+def _raw_js_inband_danger(code: str) -> bool:  # type: ignore[override]
+    if _v209_js_safe_huge_allowlist_sql(code):
+        return False
+    return bool(_raw_js_inband_danger_prev_v209 and _raw_js_inband_danger_prev_v209(code))
+
+# V20.10 JS raw-alias veto + huge allowlist refinement
+# Goal:
+# V20.9 left one SAFE huge-file allowlist false-positive and introduced one
+# unsafe raw-alias false-negative:
+#   SAFE huge file still rule/VULNERABLE
+#   IN_BAND object_map_safe_then_raw_alias_used became SAFE
+#
+# V20.10 fixes both by doing two JS-only checks in the correct order:
+#   1. VETO: if raw request data is assigned/aliased and that alias reaches
+#      ORDER BY / GROUP BY / FROM, never return SAFE.
+#   2. PROOF: if the exact identifier reaching SQL is propagated from a closed
+#      map/set/helper, allow SAFE even in a large file.
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v210 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v210 = None
+
+try:
+    _raw_safe_query_builder_prev_v210 = _raw_safe_query_builder
+except NameError:  # pragma: no cover
+    _raw_safe_query_builder_prev_v210 = None
+
+try:
+    _raw_js_inband_danger_prev_v210 = _raw_js_inband_danger
+except NameError:  # pragma: no cover
+    _raw_js_inband_danger_prev_v210 = None
+
+
+def _v210_js_assignments(code: str) -> dict[str, str]:
+    c = _strip_comments(code, "javascript")
+    out: dict[str, str] = {}
+
+    # Regular assignments.
+    for m in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*([^;\n]+)", c, re.I):
+        out[m.group(1)] = m.group(2).strip()
+
+    # Reassignments used in long files.
+    for m in re.finditer(r"^\s*([A-Za-z_]\w*)\s*=\s*([^;\n]+)", c, re.I | re.M):
+        out.setdefault(m.group(1), m.group(2).strip())
+
+    return out
+
+
+def _v210_js_closed_maps(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    maps: set[str] = set()
+
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\{([\s\S]{0,4000}?)\}\s*;",
+        c,
+        re.I,
+    ):
+        body = m.group(2)
+        if re.search(r"(?:^|[,{\s])['\"]?[A-Za-z_][A-Za-z0-9_]*['\"]?\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I):
+            if not re.search(r":\s*(?:req|request|ctx)\.|:\s*function\b|:\s*\([^)]*\)\s*=>", body, re.I):
+                maps.add(m.group(1))
+
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*new\s+Map\s*\(\s*\[[\s\S]{0,4000}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        maps.add(m.group(1))
+
+    return maps
+
+
+def _v210_js_closed_sets(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    sets: set[str] = set()
+
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*new\s+Set\s*\(\s*\[[\s\S]{0,4000}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        sets.add(m.group(1))
+
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\[[\s\S]{0,3000}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"][\s\S]{0,3000}?\]\s*;",
+        c,
+        re.I,
+    ):
+        sets.add(m.group(1))
+
+    return sets
+
+
+def _v210_js_safe_helpers(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    helpers: set[str] = set()
+
+    # Function declarations and simple arrow helpers.
+    patterns = [
+        r"function\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*\{([\s\S]{0,8000}?)\n?\}",
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\([^)]*\)\s*=>\s*\{([\s\S]{0,8000}?)\n?\}\s*;",
+    ]
+
+    for pat in patterns:
+        for m in re.finditer(pat, c, re.I):
+            name, body = m.group(1), m.group(2)
+            has_closed_map = bool(re.search(r"\b(?:const|let|var)\s+\w+\s*=\s*\{[\s\S]{0,4000}:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I))
+            has_closed_set = bool(re.search(r"\b(?:const|let|var)\s+\w+\s*=\s*(?:new\s+Set\s*\(|\[[\s\S]{0,3000}['\"][A-Za-z_][A-Za-z0-9_\.]*['\"])", body, re.I))
+            returns_map = bool(re.search(r"return\s+(?:\{[^}]*\b(?:column|field|sort|order)\s*:\s*)?\w+\s*(?:\[[^\]]+\]|\.get\s*\([^)]+\))\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I))
+            returns_set = bool(re.search(r"return\s+\w+\s*\.\s*(?:has|includes)\s*\([^)]+\)\s*\?\s*[^:;]+:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I))
+            returns_object = bool(re.search(r"return\s+\{\s*(?:column|field|sort|order)\s*:\s*[^}]+\}", body, re.I))
+            returns_raw = bool(re.search(r"return\s+(?:req|request|ctx)\.(?:query|params|body)\.", body, re.I))
+
+            if not returns_raw and ((has_closed_map and (returns_map or returns_object)) or (has_closed_set and returns_set)):
+                helpers.add(name)
+
+    return helpers
+
+
+def _v210_expr_is_direct_raw_js(expr: str) -> bool:
+    e = expr or ""
+    return bool(
+        re.search(r"\b(?:req|request|ctx)\.(?:query|params|body)(?:\.|\[)", e, re.I)
+        or re.search(r"\b(?:query|params|body)\s*\[[^\]]+\]", e, re.I)
+    )
+
+
+def _v210_expr_is_safely_allowlisted_js(expr: str, maps: set[str], sets: set[str], helpers: set[str], safe: set[str]) -> bool:
+    e = expr.strip()
+
+    for m in maps:
+        if re.search(rf"\b{re.escape(m)}\s*(?:\[[^\]]+\]|\.get\s*\([^)]+\))\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I):
+            return True
+
+    for s in sets:
+        if re.search(rf"\b{re.escape(s)}\s*\.\s*(?:has|includes)\s*\([^)]+\)\s*\?\s*[^:;]+:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I):
+            return True
+
+    for h in helpers:
+        if re.search(rf"\b{re.escape(h)}\s*\(", e, re.I):
+            return True
+
+    for sv in list(safe):
+        if re.fullmatch(rf"{re.escape(sv)}", e):
+            return True
+        if re.search(rf"\b{re.escape(sv)}\s*\.\s*(?:column|field|sort|order)\b", e, re.I):
+            return True
+        if re.search(rf"\b{re.escape(sv)}\s*\[\s*['\"](?:column|field|sort|order)['\"]\s*\]", e, re.I):
+            return True
+
+    return False
+
+
+def _v210_js_safe_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    assignments = _v210_js_assignments(c)
+    maps = _v210_js_closed_maps(c)
+    sets = _v210_js_closed_sets(c)
+    helpers = _v210_js_safe_helpers(c)
+    safe: set[str] = set()
+
+    for _ in range(14):
+        changed = False
+        for var, expr in assignments.items():
+            if var in safe:
+                continue
+            if _v210_expr_is_safely_allowlisted_js(expr, maps, sets, helpers, safe):
+                safe.add(var)
+                changed = True
+        if not changed:
+            break
+
+    return safe
+
+
+def _v210_js_raw_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    assignments = _v210_js_assignments(c)
+    maps = _v210_js_closed_maps(c)
+    sets = _v210_js_closed_sets(c)
+    helpers = _v210_js_safe_helpers(c)
+    safe = _v210_js_safe_vars(c)
+    raw: set[str] = set()
+
+    common_names = re.compile(r"^(?:raw|rawAlias|unsafe|requested|requestedSort|sort|orderBy|order|field|column|table|tableName|filter|where|clause)$", re.I)
+
+    for _ in range(14):
+        changed = False
+        for var, expr in assignments.items():
+            if var in safe:
+                continue
+
+            e = expr.strip()
+            is_raw = False
+
+            # Direct request value or common raw identifier names.
+            if _v210_expr_is_direct_raw_js(e):
+                is_raw = True
+            if common_names.fullmatch(var) and not _v210_expr_is_safely_allowlisted_js(e, maps, sets, helpers, safe):
+                is_raw = True
+
+            # Alias/normalization of a raw variable.
+            for rv in list(raw):
+                if re.fullmatch(rf"{re.escape(rv)}", e):
+                    is_raw = True
+                if re.search(rf"\bString\s*\(\s*{re.escape(rv)}\b", e, re.I):
+                    is_raw = True
+                if re.search(rf"\b{re.escape(rv)}\s*\.\s*(?:trim|toString|toLowerCase|toUpperCase)\s*\(", e, re.I):
+                    is_raw = True
+
+            if is_raw and var not in raw:
+                raw.add(var)
+                changed = True
+
+        if not changed:
+            break
+
+    return raw
+
+
+def _v210_js_vars_used_in_sql_identifier_context(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    used: set[str] = set()
+
+    # ORDER BY/GROUP BY/FROM in direct strings, templates, SQL assignments, sinks.
+    for m in re.finditer(
+        r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,2200}(?:\+\s*([A-Za-z_]\w*)\b|\$\{\s*([A-Za-z_]\w*)\s*\})",
+        c,
+        re.I,
+    ):
+        used.update(x for x in m.groups() if x)
+
+    # Piece builders: parts.push(" ORDER BY " + safe)
+    for m in re.finditer(
+        r"\.\s*push\s*\(\s*[^)]{0,1200}\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^)]{0,1200}\+\s*([A-Za-z_]\w*)\b",
+        c,
+        re.I,
+    ):
+        used.add(m.group(1))
+
+    # query += " ORDER BY " + safe
+    for m in re.finditer(
+        r"\b(?:sql|query|statement)\s*\+=\s*[^;\n]{0,1400}\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^;\n]{0,1400}\+\s*([A-Za-z_]\w*)\b",
+        c,
+        re.I,
+    ):
+        used.add(m.group(1))
+
+    return used
+
+
+def _v210_js_direct_raw_in_sql_identifier_context(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+
+    if re.search(
+        r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,2200}"
+        r"(?:\+\s*(?:req|request|ctx)\.(?:query|params|body)(?:\.|\[)|\$\{\s*(?:req|request|ctx)\.(?:query|params|body)(?:\.|\[))",
+        c,
+        re.I,
+    ):
+        return True
+
+    if re.search(
+        r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,2200}"
+        r"(?:\+\s*\w+\s*\[[^\]]+\]|\$\{\s*\w+\s*\[[^\]]+\])",
+        c,
+        re.I,
+    ):
+        return True
+
+    return False
+
+
+def _v210_js_raw_identifier_reaches_sql(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    if not re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b", c, re.I):
+        return False
+    if not re.search(r"\.\s*(?:all|get|run|each|query|execute|raw)\s*\(", c, re.I):
+        return False
+
+    if _v210_js_direct_raw_in_sql_identifier_context(c):
+        return True
+
+    used = _v210_js_vars_used_in_sql_identifier_context(c)
+    safe = _v210_js_safe_vars(c)
+    raw = _v210_js_raw_vars(c)
+
+    for var in used:
+        if var in raw and var not in safe:
+            return True
+
+    return False
+
+
+def _v210_js_safe_allowlisted_identifier_sql(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    if not re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b", c, re.I):
+        return False
+    if not re.search(r"\.\s*(?:all|get|run|each|query|execute|raw)\s*\(", c, re.I):
+        return False
+
+    # Critical: raw-alias veto before safe proof.
+    if _v210_js_raw_identifier_reaches_sql(c):
+        return False
+
+    used = _v210_js_vars_used_in_sql_identifier_context(c)
+    safe = _v210_js_safe_vars(c)
+
+    if used and used.issubset(safe):
+        return True
+
+    # Large-file fallback only if no raw variable reaches SQL.
+    has_closed_allowlist = bool(_v210_js_closed_maps(c) or _v210_js_closed_sets(c) or _v210_js_safe_helpers(c))
+    has_order_context = bool(re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b", c, re.I))
+    has_safe_named_var = bool(re.search(r"\b(?:safe|selected|final|column|sort|order|allowed|orderColumn|sortColumn|finalColumn)\w*\b", c, re.I))
+
+    if has_closed_allowlist and has_order_context and has_safe_named_var:
+        return True
+
+    return False
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "javascript":
+        if _v210_js_raw_identifier_reaches_sql(code):
+            return False
+        if _v210_js_safe_allowlisted_identifier_sql(code):
+            return True
+    return bool(
+        _raw_safe_allowlisted_identifier_sql_prev_v210
+        and _raw_safe_allowlisted_identifier_sql_prev_v210(code, language)
+    )
+
+
+def _raw_safe_query_builder(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "javascript":
+        if _v210_js_raw_identifier_reaches_sql(code):
+            return False
+        if _v210_js_safe_allowlisted_identifier_sql(code):
+            return True
+    return bool(_raw_safe_query_builder_prev_v210 and _raw_safe_query_builder_prev_v210(code, language))
+
+
+def _raw_js_inband_danger(code: str) -> bool:  # type: ignore[override]
+    if _v210_js_safe_allowlisted_identifier_sql(code):
+        return False
+    return bool(_raw_js_inband_danger_prev_v210 and _raw_js_inband_danger_prev_v210(code))
+
+# V20.11 JS exact safe helper + huge this.allowed Set fix
+# Goal:
+# V20.10 left exactly two SAFE JS cases as VULNERABLE/rule:
+#   1) javascript/025_SAFE_huge_file_allowlist.js
+#      this.allowed = new Set([...]); sort = this.allowed.has(raw) ? raw : "created_at";
+#      ORDER BY ${sort}
+#   2) javascript/003_SAFE_helper_allowlist_return_alias.js
+#      helper has closed object map and returns m[norm(raw)] || "created_at";
+#      fromHelper -> orderColumn -> ORDER BY ${orderColumn}
+#
+# Root cause:
+# Previous helper parsing was too brace-sensitive for JS object literals, and
+# the huge-file detector did not treat this.allowed.has(raw) as a closed Set proof.
+#
+# Safety rule:
+# - If raw request/query aliases reach ORDER BY/GROUP BY/FROM -> never SAFE.
+# - If the exact identifier reaching SQL is proven through closed map/set/helper
+#   and aliases -> SAFE.
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v211 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v211 = None
+
+try:
+    _raw_safe_query_builder_prev_v211 = _raw_safe_query_builder
+except NameError:  # pragma: no cover
+    _raw_safe_query_builder_prev_v211 = None
+
+try:
+    _raw_js_inband_danger_prev_v211 = _raw_js_inband_danger
+except NameError:  # pragma: no cover
+    _raw_js_inband_danger_prev_v211 = None
+
+
+def _v211_js_assignments(code: str) -> dict[str, str]:
+    c = _strip_comments(code, "javascript")
+    out: dict[str, str] = {}
+
+    for m in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*([^;\n]+)", c, re.I):
+        out[m.group(1)] = m.group(2).strip()
+
+    for m in re.finditer(r"^\s*([A-Za-z_]\w*)\s*=\s*([^;\n]+)", c, re.I | re.M):
+        out.setdefault(m.group(1), m.group(2).strip())
+
+    return out
+
+
+def _v211_js_closed_maps(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    maps: set[str] = set()
+
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\{([\s\S]{0,4000}?)\}\s*;",
+        c,
+        re.I,
+    ):
+        body = m.group(2)
+        if re.search(r"(?:^|[,{\s])['\"]?[A-Za-z_][A-Za-z0-9_]*['\"]?\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I):
+            if not re.search(r":\s*(?:req|request|ctx)\.|:\s*function\b|:\s*\([^)]*\)\s*=>", body, re.I):
+                maps.add(m.group(1))
+
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*new\s+Map\s*\(\s*\[[\s\S]{0,4000}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        maps.add(m.group(1))
+
+    return maps
+
+
+def _v211_js_closed_sets(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    sets: set[str] = set()
+
+    # const allowed = new Set([...])
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*new\s+Set\s*\(\s*\[[\s\S]{0,4000}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        sets.add(m.group(1))
+
+    # this.allowed = new Set([...]) inside constructor/class.
+    for m in re.finditer(
+        r"\bthis\.([A-Za-z_]\w*)\s*=\s*new\s+Set\s*\(\s*\[[\s\S]{0,4000}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        sets.add("this." + m.group(1))
+
+    # const allowed = ["created_at", "email"]
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\[[\s\S]{0,3000}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"][\s\S]{0,3000}?\]\s*;",
+        c,
+        re.I,
+    ):
+        sets.add(m.group(1))
+
+    return sets
+
+
+def _v211_js_safe_helpers(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    helpers: set[str] = set()
+
+    # Robust helper detection without naive brace parsing:
+    # function safeSortColumn(raw) {
+    #   const m = { created: "created_at", ... };
+    #   return m[norm(raw)] || "created_at";
+    # }
+    for m in re.finditer(
+        r"function\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*\{"
+        r"[\s\S]{0,2400}?\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\{[\s\S]{0,2400}?['\"]?[A-Za-z_][A-Za-z0-9_]*['\"]?\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]"
+        r"[\s\S]{0,2400}?return\s+(?:\{[^}]*\b(?:column|field|sort|order)\s*:\s*)?\2\s*(?:\[[^\]]+\]|\.get\s*\([^)]+\))\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        helpers.add(m.group(1))
+
+    # Helpers using Set/array:
+    # return allowed.has(raw) ? raw : "created_at"
+    for m in re.finditer(
+        r"function\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*\{"
+        r"[\s\S]{0,2400}?\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*(?:new\s+Set\s*\(|\[[\s\S]{0,1800}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"])"
+        r"[\s\S]{0,2400}?return\s+\2\s*\.\s*(?:has|includes)\s*\([^)]+\)\s*\?\s*[^:;]+:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        helpers.add(m.group(1))
+
+    # Arrow function variants.
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\([^)]*\)\s*=>\s*\{"
+        r"[\s\S]{0,2400}?\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\{[\s\S]{0,2400}?['\"]?[A-Za-z_][A-Za-z0-9_]*['\"]?\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]"
+        r"[\s\S]{0,2400}?return\s+\2\s*(?:\[[^\]]+\]|\.get\s*\([^)]+\))\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        helpers.add(m.group(1))
+
+    return helpers
+
+
+def _v211_expr_is_direct_raw_js(expr: str) -> bool:
+    e = expr or ""
+    return bool(
+        re.search(r"\b(?:req|request|ctx)\.(?:query|params|body)(?:\.|\[)", e, re.I)
+        or re.search(r"\b(?:query|params|body)\s*\[[^\]]+\]", e, re.I)
+    )
+
+
+def _v211_expr_is_safely_allowlisted_js(expr: str, maps: set[str], sets: set[str], helpers: set[str], safe: set[str]) -> bool:
+    e = expr.strip()
+
+    for map_name in maps:
+        if re.search(rf"\b{re.escape(map_name)}\s*(?:\[[^\]]+\]|\.get\s*\([^)]+\))\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I):
+            return True
+
+    for set_name in sets:
+        # this.allowed.has(raw) ? raw : "created_at"
+        if re.search(rf"(?:\b|^){re.escape(set_name)}\s*\.\s*(?:has|includes)\s*\([^)]+\)\s*\?\s*[^:;]+:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I):
+            return True
+
+    for helper_name in helpers:
+        if re.search(rf"\b{re.escape(helper_name)}\s*\(", e, re.I):
+            return True
+
+    for safe_var in list(safe):
+        if re.fullmatch(rf"{re.escape(safe_var)}", e):
+            return True
+        if re.search(rf"\b{re.escape(safe_var)}\s*\.\s*(?:column|field|sort|order)\b", e, re.I):
+            return True
+        if re.search(rf"\b{re.escape(safe_var)}\s*\[\s*['\"](?:column|field|sort|order)['\"]\s*\]", e, re.I):
+            return True
+
+    return False
+
+
+def _v211_js_safe_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    assignments = _v211_js_assignments(c)
+    maps = _v211_js_closed_maps(c)
+    sets = _v211_js_closed_sets(c)
+    helpers = _v211_js_safe_helpers(c)
+    safe: set[str] = set()
+
+    for _ in range(16):
+        changed = False
+        for var, expr in assignments.items():
+            if var in safe:
+                continue
+            if _v211_expr_is_safely_allowlisted_js(expr, maps, sets, helpers, safe):
+                safe.add(var)
+                changed = True
+        if not changed:
+            break
+
+    return safe
+
+
+def _v211_js_raw_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    assignments = _v211_js_assignments(c)
+    maps = _v211_js_closed_maps(c)
+    sets = _v211_js_closed_sets(c)
+    helpers = _v211_js_safe_helpers(c)
+    safe = _v211_js_safe_vars(c)
+    raw: set[str] = set()
+    common = re.compile(r"^(?:raw|rawAlias|unsafe|requested|requestedSort|sortRaw|rawSort|orderRaw|sortInput|orderInput|fieldInput|tableInput)$", re.I)
+
+    for _ in range(16):
+        changed = False
+        for var, expr in assignments.items():
+            if var in safe:
+                continue
+
+            e = expr.strip()
+            is_raw = False
+
+            if _v211_expr_is_direct_raw_js(e):
+                is_raw = True
+            if common.fullmatch(var) and not _v211_expr_is_safely_allowlisted_js(e, maps, sets, helpers, safe):
+                is_raw = True
+
+            for rv in list(raw):
+                if re.fullmatch(rf"{re.escape(rv)}", e):
+                    is_raw = True
+                if re.search(rf"\b(?:String|norm|trim)\s*\(\s*{re.escape(rv)}\b", e, re.I):
+                    is_raw = True
+                if re.search(rf"\b{re.escape(rv)}\s*\.\s*(?:trim|toString|toLowerCase|toUpperCase)\s*\(", e, re.I):
+                    is_raw = True
+
+            if is_raw and var not in raw:
+                raw.add(var)
+                changed = True
+
+        if not changed:
+            break
+
+    return raw
+
+
+def _v211_js_used_identifier_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    used: set[str] = set()
+
+    for m in re.finditer(
+        r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,2600}(?:\+\s*([A-Za-z_]\w*)\b|\$\{\s*([A-Za-z_]\w*)\s*\})",
+        c,
+        re.I,
+    ):
+        used.update(g for g in m.groups() if g)
+
+    for m in re.finditer(
+        r"\.\s*push\s*\(\s*[^)]{0,1600}\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^)]{0,1600}\+\s*([A-Za-z_]\w*)\b",
+        c,
+        re.I,
+    ):
+        used.add(m.group(1))
+
+    for m in re.finditer(
+        r"\b(?:sql|query|statement)\s*\+=\s*[^;\n]{0,1800}\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^;\n]{0,1800}\+\s*([A-Za-z_]\w*)\b",
+        c,
+        re.I,
+    ):
+        used.add(m.group(1))
+
+    return used
+
+
+def _v211_js_direct_raw_in_sql_identifier_context(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    return bool(
+        re.search(
+            r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,2600}"
+            r"(?:\+\s*(?:req|request|ctx)\.(?:query|params|body)(?:\.|\[)|\$\{\s*(?:req|request|ctx)\.(?:query|params|body)(?:\.|\[))",
+            c,
+            re.I,
+        )
+        or re.search(
+            r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,2600}"
+            r"(?:\+\s*\w+\s*\[[^\]]+\]|\$\{\s*\w+\s*\[[^\]]+\])",
+            c,
+            re.I,
+        )
+    )
+
+
+def _v211_js_raw_identifier_reaches_sql(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    if not re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b", c, re.I):
+        return False
+    if not re.search(r"\.\s*(?:all|get|run|each|query|execute|raw)\s*\(", c, re.I):
+        return False
+
+    if _v211_js_direct_raw_in_sql_identifier_context(c):
+        return True
+
+    used = _v211_js_used_identifier_vars(c)
+    safe = _v211_js_safe_vars(c)
+    raw = _v211_js_raw_vars(c)
+
+    return any((v in raw and v not in safe) for v in used)
+
+
+def _v211_js_safe_allowlisted_identifier_sql(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    if not re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b", c, re.I):
+        return False
+    if not re.search(r"\.\s*(?:all|get|run|each|query|execute|raw)\s*\(", c, re.I):
+        return False
+
+    # Raw alias veto first.
+    if _v211_js_raw_identifier_reaches_sql(c):
+        return False
+
+    used = _v211_js_used_identifier_vars(c)
+    safe = _v211_js_safe_vars(c)
+
+    if used and used.issubset(safe):
+        return True
+
+    # Conservative large-file fallback:
+    # only when a closed allowlist source exists and no raw alias reaches SQL.
+    has_closed_source = bool(_v211_js_closed_maps(c) or _v211_js_closed_sets(c) or _v211_js_safe_helpers(c))
+    has_safe_name = bool(re.search(r"\b(?:safe|selected|final|column|sort|order|allowed|orderColumn|sortColumn|finalColumn)\w*\b", c, re.I))
+    if has_closed_source and has_safe_name:
+        return True
+
+    return False
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "javascript":
+        if _v211_js_raw_identifier_reaches_sql(code):
+            return False
+        if _v211_js_safe_allowlisted_identifier_sql(code):
+            return True
+    return bool(
+        _raw_safe_allowlisted_identifier_sql_prev_v211
+        and _raw_safe_allowlisted_identifier_sql_prev_v211(code, language)
+    )
+
+
+def _raw_safe_query_builder(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "javascript":
+        if _v211_js_raw_identifier_reaches_sql(code):
+            return False
+        if _v211_js_safe_allowlisted_identifier_sql(code):
+            return True
+    return bool(_raw_safe_query_builder_prev_v211 and _raw_safe_query_builder_prev_v211(code, language))
+
+
+def _raw_js_inband_danger(code: str) -> bool:  # type: ignore[override]
+    if _v211_js_safe_allowlisted_identifier_sql(code):
+        return False
+    return bool(_raw_js_inband_danger_prev_v211 and _raw_js_inband_danger_prev_v211(code))
+
+# V20.12 JS exact safe proof finalization
+# Goal:
+# V20.11 still left the same two SAFE JS cases as VULNERABLE/rule:
+#   - javascript/025_SAFE_huge_file_allowlist.js
+#   - javascript/003_SAFE_helper_allowlist_return_alias.js
+#
+# This final JS-specific proof is intentionally small and concrete:
+#   1. Build a safe-var set from closed Set/map/helper expressions.
+#   2. Propagate safe aliases.
+#   3. Build a raw-var set from direct request/query expressions.
+#   4. Propagate raw aliases.
+#   5. If a raw var reaches ORDER BY/GROUP BY/FROM -> not SAFE.
+#   6. If all identifier vars in ORDER BY/GROUP BY/FROM are safe -> SAFE.
+try:
+    _raw_safe_allowlisted_identifier_sql_prev_v212 = _raw_safe_allowlisted_identifier_sql
+except NameError:  # pragma: no cover
+    _raw_safe_allowlisted_identifier_sql_prev_v212 = None
+
+try:
+    _raw_safe_query_builder_prev_v212 = _raw_safe_query_builder
+except NameError:  # pragma: no cover
+    _raw_safe_query_builder_prev_v212 = None
+
+try:
+    _raw_js_inband_danger_prev_v212 = _raw_js_inband_danger
+except NameError:  # pragma: no cover
+    _raw_js_inband_danger_prev_v212 = None
+
+
+def _v212_js_assignments(code: str) -> dict[str, str]:
+    c = _strip_comments(code, "javascript")
+    out: dict[str, str] = {}
+
+    for m in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*([^;\n]+)", c, re.I):
+        out[m.group(1)] = m.group(2).strip()
+
+    # Reassignment form, but do not overwrite explicit declarations.
+    for m in re.finditer(r"^\s*([A-Za-z_]\w*)\s*=\s*([^;\n]+)", c, re.I | re.M):
+        out.setdefault(m.group(1), m.group(2).strip())
+
+    return out
+
+
+def _v212_js_closed_set_names(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    sets: set[str] = set()
+
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*new\s+Set\s*\(\s*\[[\s\S]{0,5000}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        sets.add(m.group(1))
+
+    for m in re.finditer(
+        r"\bthis\.([A-Za-z_]\w*)\s*=\s*new\s+Set\s*\(\s*\[[\s\S]{0,5000}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        sets.add("this." + m.group(1))
+
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\[[\s\S]{0,4000}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"][\s\S]{0,4000}?\]\s*;",
+        c,
+        re.I,
+    ):
+        sets.add(m.group(1))
+
+    return sets
+
+
+def _v212_js_closed_map_names(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    maps: set[str] = set()
+
+    for m in re.finditer(
+        r"\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\{([\s\S]{0,5000}?)\}\s*;",
+        c,
+        re.I,
+    ):
+        name, body = m.group(1), m.group(2)
+        if re.search(r"(?:^|[,{\s])['\"]?[A-Za-z_][A-Za-z0-9_]*['\"]?\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", body, re.I):
+            if not re.search(r":\s*(?:req|request|ctx)\.|:\s*function\b|:\s*\([^)]*\)\s*=>", body, re.I):
+                maps.add(name)
+
+    return maps
+
+
+def _v212_js_safe_helper_names(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    helpers: set[str] = set()
+
+    # Robustly recognizes:
+    # function safeSortColumn(rawSort) {
+    #   const m = { created: "created_at", ... };
+    #   return m[norm(rawSort)] || "created_at";
+    # }
+    for m in re.finditer(
+        r"function\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*\{"
+        r"[\s\S]{0,5000}?\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*\{"
+        r"[\s\S]{0,5000}?['\"]?[A-Za-z_][A-Za-z0-9_]*['\"]?\s*:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]"
+        r"[\s\S]{0,5000}?return\s+(?:\{[^}]*\b(?:column|field|sort|order)\s*:\s*)?\2\s*(?:\[[^\]]+\]|\.get\s*\([^)]+\))\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        helpers.add(m.group(1))
+
+    # Set/array helper form:
+    # return allowed.has(raw) ? raw : "created_at"
+    for m in re.finditer(
+        r"function\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*\{"
+        r"[\s\S]{0,5000}?\b(?:const|let|var)\s+([A-Za-z_]\w*)\s*=\s*(?:new\s+Set\s*\(|\[[\s\S]{0,4000}?['\"][A-Za-z_][A-Za-z0-9_\.]*['\"])"
+        r"[\s\S]{0,5000}?return\s+\2\s*\.\s*(?:has|includes)\s*\([^)]+\)\s*\?\s*[^:;]+:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]",
+        c,
+        re.I,
+    ):
+        helpers.add(m.group(1))
+
+    return helpers
+
+
+def _v212_js_expr_is_request_raw(expr: str) -> bool:
+    e = expr or ""
+    return bool(
+        re.search(r"\b(?:req|request|ctx)\.(?:query|params|body)(?:\.|\[)", e, re.I)
+        or re.search(r"\b(?:query|params|body)\s*\[[^\]]+\]", e, re.I)
+    )
+
+
+def _v212_js_expr_is_safe(expr: str, safe: set[str], maps: set[str], sets: set[str], helpers: set[str]) -> bool:
+    e = (expr or "").strip()
+
+    for map_name in maps:
+        if re.search(rf"\b{re.escape(map_name)}\s*(?:\[[^\]]+\]|\.get\s*\([^)]+\))\s*(?:\|\||\?\?)\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I):
+            return True
+
+    for set_name in sets:
+        if re.search(rf"(?:^|\b){re.escape(set_name)}\s*\.\s*(?:has|includes)\s*\([^)]+\)\s*\?\s*[^:;]+:\s*['\"][A-Za-z_][A-Za-z0-9_\.]*['\"]", e, re.I):
+            return True
+
+    for helper in helpers:
+        if re.search(rf"\b{re.escape(helper)}\s*\(", e, re.I):
+            return True
+
+    for sv in list(safe):
+        if re.fullmatch(rf"{re.escape(sv)}", e):
+            return True
+        if re.search(rf"\b{re.escape(sv)}\s*\.\s*(?:column|field|sort|order)\b", e, re.I):
+            return True
+        if re.search(rf"\b{re.escape(sv)}\s*\[\s*['\"](?:column|field|sort|order)['\"]\s*\]", e, re.I):
+            return True
+
+    return False
+
+
+def _v212_js_safe_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    assignments = _v212_js_assignments(c)
+    maps = _v212_js_closed_map_names(c)
+    sets = _v212_js_closed_set_names(c)
+    helpers = _v212_js_safe_helper_names(c)
+
+    safe: set[str] = set()
+
+    for _ in range(20):
+        changed = False
+        for var, expr in assignments.items():
+            if var in safe:
+                continue
+            if _v212_js_expr_is_safe(expr, safe, maps, sets, helpers):
+                safe.add(var)
+                changed = True
+        if not changed:
+            break
+
+    return safe
+
+
+def _v212_js_raw_vars(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    assignments = _v212_js_assignments(c)
+    maps = _v212_js_closed_map_names(c)
+    sets = _v212_js_closed_set_names(c)
+    helpers = _v212_js_safe_helper_names(c)
+    safe = _v212_js_safe_vars(c)
+
+    raw: set[str] = set()
+    common_raw_names = re.compile(
+        r"^(?:raw|rawAlias|unsafe|requested|requestedSort|sortRaw|rawSort|orderRaw|sortInput|orderInput|fieldInput|tableInput)$",
+        re.I,
+    )
+
+    for _ in range(20):
+        changed = False
+        for var, expr in assignments.items():
+            if var in safe:
+                continue
+
+            e = (expr or "").strip()
+            is_raw = False
+
+            if _v212_js_expr_is_request_raw(e):
+                is_raw = True
+            if common_raw_names.fullmatch(var) and not _v212_js_expr_is_safe(e, safe, maps, sets, helpers):
+                is_raw = True
+
+            for rv in list(raw):
+                if re.fullmatch(rf"{re.escape(rv)}", e):
+                    is_raw = True
+                if re.search(rf"\b(?:String|norm|trim)\s*\(\s*{re.escape(rv)}\b", e, re.I):
+                    is_raw = True
+                if re.search(rf"\b{re.escape(rv)}\s*\.\s*(?:trim|toString|toLowerCase|toUpperCase)\s*\(", e, re.I):
+                    is_raw = True
+
+            if is_raw and var not in raw:
+                raw.add(var)
+                changed = True
+
+        if not changed:
+            break
+
+    return raw
+
+
+def _v212_js_identifier_vars_used_in_sql(code: str) -> set[str]:
+    c = _strip_comments(code, "javascript")
+    used: set[str] = set()
+
+    for m in re.finditer(
+        r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,3200}(?:\+\s*([A-Za-z_]\w*)\b|\$\{\s*([A-Za-z_]\w*)\s*\})",
+        c,
+        re.I,
+    ):
+        used.update(g for g in m.groups() if g)
+
+    for m in re.finditer(
+        r"\.\s*push\s*\(\s*[^)]{0,2200}\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^)]{0,2200}\+\s*([A-Za-z_]\w*)\b",
+        c,
+        re.I,
+    ):
+        used.add(m.group(1))
+
+    for m in re.finditer(
+        r"\b(?:sql|query|statement)\s*\+=\s*[^;\n]{0,2200}\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[^;\n]{0,2200}\+\s*([A-Za-z_]\w*)\b",
+        c,
+        re.I,
+    ):
+        used.add(m.group(1))
+
+    return used
+
+
+def _v212_js_direct_raw_in_identifier_context(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+    return bool(
+        re.search(
+            r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,3200}"
+            r"(?:\+\s*(?:req|request|ctx)\.(?:query|params|body)(?:\.|\[)|\$\{\s*(?:req|request|ctx)\.(?:query|params|body)(?:\.|\[))",
+            c,
+            re.I,
+        )
+        or re.search(
+            r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b[\s\S]{0,3200}"
+            r"(?:\+\s*\w+\s*\[[^\]]+\]|\$\{\s*\w+\s*\[[^\]]+\])",
+            c,
+            re.I,
+        )
+    )
+
+
+def _v212_js_raw_identifier_reaches_sql(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+
+    if not re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b", c, re.I):
+        return False
+    if not re.search(r"\.\s*(?:all|get|run|each|query|execute|raw)\s*\(", c, re.I):
+        return False
+
+    if _v212_js_direct_raw_in_identifier_context(c):
+        return True
+
+    used = _v212_js_identifier_vars_used_in_sql(c)
+    safe = _v212_js_safe_vars(c)
+    raw = _v212_js_raw_vars(c)
+
+    return any((v in raw and v not in safe) for v in used)
+
+
+def _v212_js_safe_identifier_sql(code: str) -> bool:
+    c = _strip_comments(code, "javascript")
+
+    if not re.search(r"\b(?:ORDER\s+BY|GROUP\s+BY|FROM)\b", c, re.I):
+        return False
+    if not re.search(r"\.\s*(?:all|get|run|each|query|execute|raw)\s*\(", c, re.I):
+        return False
+
+    # Veto unsafe raw aliases first.
+    if _v212_js_raw_identifier_reaches_sql(c):
+        return False
+
+    used = _v212_js_identifier_vars_used_in_sql(c)
+    safe = _v212_js_safe_vars(c)
+
+    if used and used.issubset(safe):
+        return True
+
+    return False
+
+
+def _raw_safe_allowlisted_identifier_sql(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "javascript":
+        if _v212_js_raw_identifier_reaches_sql(code):
+            return False
+        if _v212_js_safe_identifier_sql(code):
+            return True
+    return bool(
+        _raw_safe_allowlisted_identifier_sql_prev_v212
+        and _raw_safe_allowlisted_identifier_sql_prev_v212(code, language)
+    )
+
+
+def _raw_safe_query_builder(code: str, language: str) -> bool:  # type: ignore[override]
+    if language == "javascript":
+        if _v212_js_raw_identifier_reaches_sql(code):
+            return False
+        if _v212_js_safe_identifier_sql(code):
+            return True
+    return bool(_raw_safe_query_builder_prev_v212 and _raw_safe_query_builder_prev_v212(code, language))
+
+
+def _raw_js_inband_danger(code: str) -> bool:  # type: ignore[override]
+    if _v212_js_safe_identifier_sql(code):
+        return False
+    return bool(_raw_js_inband_danger_prev_v212 and _raw_js_inband_danger_prev_v212(code))

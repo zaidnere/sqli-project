@@ -298,5 +298,6 @@
   },
   "weights_file": "sqli_detection_model.npz",
   "legacy_weights_file": "sqli_model.npz",
-  "metrics_file": "sqli_detection_metrics.json"
+  "metrics_file": "sqli_detection_metrics.json",
+  "selected_threshold": 0.96
 }

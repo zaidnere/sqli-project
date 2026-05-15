@@ -1,0 +1,58 @@
+﻿# ML-only Suite Evaluation
+- Suite: **sqli_comprehensive_attack_surface_suite_v1.zip**
+- Model version: **model1-cnn-bilstm-dual-head-v20-attack-surface-ml95**
+- Weights: `C:\Users\zaidn\OneDrive\Documents\final\sqli-project\backend\app\model\weights\sqli_model.npz`
+- Metadata: `C:\Users\zaidn\OneDrive\Documents\final\sqli-project\backend\app\model\weights\sqli_detection_metadata.json`
+- Threshold: **0.3600** from `metadata.threshold`
+- Total: **192**
+- Binary ML accuracy: **155/192** (80.73%)
+- Full ML label+type accuracy: **150/192** (78.12%)
+- Precision / Recall / F1: **0.8741 / 0.8681 / 0.8711**
+- FP / FN: **18 / 19**
+- Expected attack distribution: `{'NONE': 48, 'IN_BAND': 48, 'BLIND': 48, 'SECOND_ORDER': 48}`
+- ML attack distribution: `{'NONE': 50, 'IN_BAND': 54, 'BLIND': 50, 'SECOND_ORDER': 38}`
+
+## Failures
+
+- `java/100_SAFE_allowlist_order_direct.java` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `java/101_SAFE_allowlist_order_alias.java` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `java/102_SAFE_helper_returns_safe_column.java` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `java/107_SAFE_sql_like_string_no_sink.java` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `javascript/059_SAFE_sql_like_string_no_sink.js` expected `SAFE / NONE` got `VULNERABLE / BLIND` risk `0.9998`
+- `javascript/061_IN_BAND_raw_where_concat.js` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.0475`
+- `javascript/062_IN_BAND_template_like_search.js` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.0475`
+- `javascript/063_IN_BAND_raw_order_by.js` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.0`
+- `javascript/064_IN_BAND_allowlist_exists_but_raw_used.js` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.0`
+- `javascript/068_IN_BAND_raw_column_name.js` expected `VULNERABLE / IN_BAND` got `VULNERABLE / SECOND_ORDER` risk `1.0`
+- `javascript/069_IN_BAND_union_style_raw_search.js` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.0475`
+- `javascript/070_IN_BAND_stacked_query_exec.js` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.0475`
+- `javascript/072_IN_BAND_query_alias_raw_exec.js` expected `VULNERABLE / IN_BAND` got `SAFE / NONE` risk `0.0475`
+- `php/155_SAFE_sql_like_string_no_sink.php` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `php/181_SECOND_ORDER_saved_filter_where_clause.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.2934`
+- `php/182_SECOND_ORDER_cached_filter_sql.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.2934`
+- `php/183_SECOND_ORDER_config_where_clause.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.2934`
+- `php/184_SECOND_ORDER_config_order_clause.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.2934`
+- `php/185_SECOND_ORDER_stored_full_query.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.2934`
+- `php/186_SECOND_ORDER_db_fragment_alias_chain.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.2934`
+- `php/187_SECOND_ORDER_saved_segment_property.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.2934`
+- `php/188_SECOND_ORDER_db_loaded_order_expression.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.2934`
+- `php/189_SECOND_ORDER_profile_audit_fragment.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.2934`
+- `php/190_SECOND_ORDER_scheduled_job_sql_body.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.2934`
+- `php/191_SECOND_ORDER_nested_cached_config.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.2934`
+- `php/192_SECOND_ORDER_stored_procedure_sql_text.php` expected `VULNERABLE / SECOND_ORDER` got `SAFE / NONE` risk `0.2934`
+- `python/001_SAFE_prepared_params.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `python/002_SAFE_named_params.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `python/003_SAFE_orm_bind_replacements.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `python/004_SAFE_allowlist_order_direct.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `python/005_SAFE_allowlist_order_alias.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `python/006_SAFE_helper_returns_safe_column.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `python/007_SAFE_numeric_limit_offset_bounds.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `python/008_SAFE_placeholder_in_list.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `python/009_SAFE_db_loaded_value_as_param.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `python/010_SAFE_static_sql_no_input.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `python/011_SAFE_sql_like_string_no_sink.py` expected `SAFE / NONE` got `VULNERABLE / NONE` risk `0.6951`
+- `python/012_SAFE_multi_query_all_parameterized.py` expected `SAFE / NONE` got `VULNERABLE / IN_BAND` risk `1.0`
+- `python/015_IN_BAND_raw_order_by.py` expected `VULNERABLE / IN_BAND` got `VULNERABLE / BLIND` risk `1.0`
+- `python/016_IN_BAND_allowlist_exists_but_raw_used.py` expected `VULNERABLE / IN_BAND` got `VULNERABLE / BLIND` risk `1.0`
+- `python/020_IN_BAND_raw_column_name.py` expected `VULNERABLE / IN_BAND` got `VULNERABLE / SECOND_ORDER` risk `1.0`
+- `python/031_BLIND_time_based_sleep.py` expected `VULNERABLE / BLIND` got `VULNERABLE / IN_BAND` risk `1.0`
