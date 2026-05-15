@@ -1,1 +1,0 @@
-﻿stage,suite,case_id,language,expected_verdict,model1_verdict,model1_attack_type,expected_fix_type,model2_fix_type,final_fix_type,strict_reason,model2_confidence,probabilities,fixed_code_preview
